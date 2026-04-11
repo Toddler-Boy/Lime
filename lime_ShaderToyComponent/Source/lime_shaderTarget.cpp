@@ -483,8 +483,8 @@ void shaderTarget::compileOpenGLShaderProgram ()
 	openGLStatus = shaderProgramAttempt->getLastError ();
 	if ( openGLStatus.isNotEmpty () )
 	{
-		Z_ERR ( getName () );
-		Z_ERR ( openGLStatus );
+		juce::Logger::writeToLog ( "[E]" + getName () );
+		juce::Logger::writeToLog ( "[E]" + openGLStatus );
 
 		// Find the line mention in the error message and print the shader code around it for easier debugging
 		const auto	errorLine = openGLStatus.fromFirstOccurrenceOf ( "(", false, false ).upToFirstOccurrenceOf ( ")", false, false ).getIntValue () - 1;
@@ -498,7 +498,7 @@ void shaderTarget::compileOpenGLShaderProgram ()
 			const auto	linePrefix = ( i == errorLine ) ? ">>" : "  ";
 			const auto	lineContent = shaderLines[ i ].replace ( "\t", "    " );
 
-			reFX::Logging::logMessage ( linePrefix + lineNum + ": " + lineContent, i == errorLine ? reFX::LogLevel::error : reFX::LogLevel::log );
+			juce::Logger::writeToLog ( juce::String ( i == errorLine ? "[E]" : "[L]" ) + linePrefix + lineNum + ": " + lineContent );
 		}
 	}
 

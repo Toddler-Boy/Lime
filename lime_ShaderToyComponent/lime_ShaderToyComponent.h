@@ -10,13 +10,13 @@
 
   ID:					lime_ShaderToyComponent
   vendor:				Toddler-Boy
-  version:				1.0.0
+  version:				1.0.2
   name:					lime JUCE ShaderToyComponent class
   description:			Classes for creating simple openGL render-pipelines with glsl shaders
   license:				GPLv3
   minimumCppStandard:	20
 
-  dependencies:     juce_core, juce_events, juce_graphics, juce_gui_basics, juce_opengl, gin, refx_logging
+  dependencies:     juce_core, juce_events, juce_graphics, juce_gui_basics, juce_opengl, gin
 
  END_JUCE_MODULE_DECLARATION
 
@@ -33,7 +33,6 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_opengl/juce_opengl.h>
 #include <gin/gin.h>
-#include <refx_logging/refx_logging.h>
 
 //==============================================================================
 

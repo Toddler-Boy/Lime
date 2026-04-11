@@ -183,14 +183,14 @@ void ShaderToyComponent::parsePipeline ()
 	auto	rootObj = juce::var ();
 	if ( auto err = juce::JSON::parse ( jsonStr, rootObj ); ! err.wasOk () )
 	{
-		Z_ERR ( renderPipeline.getFullPathName () << " parse error" );
-		Z_ERR ( err.getErrorMessage () );
+		juce::Logger::writeToLog ( "[E]" + renderPipeline.getFullPathName () + " parse error" );
+		juce::Logger::writeToLog ( "[E]" + err.getErrorMessage () );
 		return;
 	}
 
 	if ( ! rootObj.isObject () )
 	{
-		Z_ERR ( renderPipeline.getFullPathName () << " has to be an object" );
+		juce::Logger::writeToLog ( "[E]" + renderPipeline.getFullPathName () + " has to be an object" );
 		return;
 	}
 
@@ -198,7 +198,7 @@ void ShaderToyComponent::parsePipeline ()
 	{
 		if ( ! rootObj.hasProperty ( "layers" ) || ! rootObj[ "layers" ].isArray () )
 		{
-			Z_ERR ( renderPipeline.getFullPathName () << " needs a \"layers\" object that is an array" );
+			juce::Logger::writeToLog ( "[E]" + renderPipeline.getFullPathName () + " needs a \"layers\" object that is an array" );
 			return;
 		}
 
@@ -240,7 +240,7 @@ void ShaderToyComponent::parsePipeline ()
 
 							if ( ! txt && texName.startsWithChar ( '/' ) )
 							{
-								Z_ERR ( "texture " << texName << " does not exist. Textures starting with a \"/\" are reserved for pre-allocated textures" );
+								juce::Logger::writeToLog ( "[E]texture " + texName + " does not exist. Textures starting with a \"/\" are reserved for pre-allocated textures" );
 							}
 							else
 							{
@@ -271,7 +271,7 @@ void ShaderToyComponent::parsePipeline ()
 											else if ( clampStr == "border" )	texClamp = juce::gl::GL_CLAMP_TO_BORDER;
 											else
 											{
-												Z_ERR ( "unknown wrap mode: " << clampStr << " for texture " << tex.toString () << " (target " << tgtName << ")" );
+												juce::Logger::writeToLog ( "[E]unknown wrap mode: " + clampStr + " for texture " + tex.toString () + " (target " + tgtName + ")" );
 											}
 										}
 
@@ -283,7 +283,7 @@ void ShaderToyComponent::parsePipeline ()
 											else if ( filterStr == "linear" )	texFilter = true;
 											else
 											{
-												Z_ERR ( "unknown filter mode: " << filterStr << " for texture " << tex.toString () << " (target " << tgtName << ")" );
+												juce::Logger::writeToLog ( "[E]unknown filter mode: " + filterStr + " for texture " + tex.toString () + " (target " + tgtName + ")" );
 											}
 										}
 
@@ -300,7 +300,7 @@ void ShaderToyComponent::parsePipeline ()
 												texBorderColor = juce::Colour::fromFloatRGBA ( colLines[ 0 ].getFloatValue (), colLines[ 1 ].getFloatValue (), colLines[ 2 ].getFloatValue (), colLines[ 3 ].getFloatValue () );
 											else
 											{
-												Z_ERR ( "unknown color: " << txtColStr << " for texture " << tex.toString () << " (target " << tgtName << ")" );
+												juce::Logger::writeToLog ( "[E]unknown color: " + txtColStr + " for texture " + tex.toString () + " (target " + tgtName + ")" );
 											}
 										}
 									}
@@ -632,7 +632,7 @@ juce::String ShaderToyComponent::loadFragmentShader ( juce::String name )
 	auto	shaderStr = findFile ( name ).loadFileAsString ();
 	if ( shaderStr.isEmpty () )
 	{
-		Z_ERR ( "Can't find shader named " << name.quoted () );
+		juce::Logger::writeToLog ( "[E]Can't find shader named " + name.quoted () );
 		return {};
 	}
 
@@ -677,7 +677,7 @@ static const char* getGLErrorMessage ( const GLenum e ) noexcept
 		if ( e == juce::gl::GL_NO_ERROR )
 			break;
 
-		Z_ERR ( getGLErrorMessage ( e ) );
+		juce::Logger::writeToLog ( "[E]" + juce::String ( getGLErrorMessage ( e ) ) );
 		jassertfalse;
 	}
 }
