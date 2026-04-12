@@ -22,7 +22,7 @@ public:
 	void paint ( juce::Graphics& /*g*/ ) override {}
 
 	// this
-	bool isReady () const { return openGLContext.isAttached (); }
+	[[ nodiscard ]] bool isReady () const { return openGLContext.isAttached (); }
 
 	void setRoot ( const juce::File& _root, const juce::File& _local, const juce::String& shaderFolderName = "!Shaders", const juce::String& textureFolderName = "!Textures" );
 
@@ -48,11 +48,11 @@ public:
 	void setGlobalUniform ( const std::string& name, const int value );
 
 	void setCaptureAddress ( void* addr );
-	float getRenderingScale () const { return float ( openGLContext.getRenderingScale () ); }
-	bool hasFinished () const { return lastFrameRendered == lastFrameRequested; }
+	[[ nodiscard ]] float getRenderingScale () const { return float ( openGLContext.getRenderingScale () ); }
+	[[ nodiscard ]] bool hasFinished () const { return lastFrameRendered == lastFrameRequested; }
 
 	// Helpers
-	double getDeltaTime ();
+	[[ nodiscard ]] double getDeltaTime ();
 
 	// gin::FileSystemWatcher::Listener
 	void fileChanged ( const juce::File& file, gin::FileSystemWatcher::FileSystemEvent event ) override;
