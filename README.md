@@ -44,6 +44,7 @@ Lime is organized into focused modules that can be included independently:
 | **lime_Logger** | Basic juce::Logger implementation in a separate Windows/Component |
 | **lime_ShaderToyComponent** | Simple render-pipeline with openGL shaders |
 | **lime_YamlConfig** | Define a list of possible parameters and load/store them in a YAML-like file |
+| **lime_Webcam** | Receives native pixel data (usually YUV12) and provides it in std::function callback |
 
 ## Features
 
@@ -61,3 +62,8 @@ Lime is organized into focused modules that can be included independently:
 - Create list of parameters with paths, fixed data-types and defaults.
 - Load from YAML-like file, store into YAML-like file.
 - Very fast and easy look up via `get<int> ( "root/child/parameter" )`
+
+### Webcam (lime_Webcam)
+- Set a preferred resolution and target fps
+- Grabs first camera and starts calling the callback for every frame
+- It's recommended to use a shader (openGL, Metal, etc.) to convert to RGB
