@@ -25,6 +25,7 @@ add_subdirectory(modules/lime/modules)
 target_link_libraries(YourTarget PRIVATE
     lime_Logger              # For logging
     lime_ShaderToyComponent  # Simple render-pipeline with openGL shaders
+    lime_YamlConfig          # YAML-like retrival and storage
     # ... other lime modules as needed
 )
 ```
@@ -42,7 +43,7 @@ Lime is organized into focused modules that can be included independently:
 |--------|-------------|
 | **lime_Logger** | Basic juce::Logger implementation in a separate Windows/Component |
 | **lime_ShaderToyComponent** | Simple render-pipeline with openGL shaders |
-
+| **lime_YamlConfig** | Define a list of possible parameters and load/store them in a YAML-like file |
 
 ## Features
 
@@ -55,3 +56,8 @@ Lime is organized into focused modules that can be included independently:
 - Create render pipelines with a simple JSON file or with a few lines of code.
 - Everything is hot-reloaded: textures, shaders, and even the JSON itself.
 - Shaders are text files in GLSL format and are largely ShaderToy-compatible, except that fragCoord is normalized rather than using pixels.
+
+### YamlConfig (lime_YamlConfig)
+- Create list of parameters with paths, fixed data-types and defaults.
+- Load from YAML-like file, store into YAML-like file.
+- Very fast and easy look up via `get<int> ( "root/child/parameter" )`

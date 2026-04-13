@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 4.3)
 set_property(GLOBAL PROPERTY USE_FOLDERS YES)
 set(JUCE_ENABLE_MODULE_SOURCE_GROUPS ON CACHE BOOL "" FORCE)
 set (CMAKE_CXX_STANDARD 20)
