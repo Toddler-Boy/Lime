@@ -1,7 +1,57 @@
-# ShaderToyComponent
+# Lime
 
-Create render pipelines with a simple JSON file or with a few lines of code.
+A small collection of extra modules for [JUCE](https://juce.com/), providing professional-grade utilities, UI components, and more for application development.
 
-Everything is hot-reloaded: textures, shaders, and even the JSON itself.
+## Prerequisites
 
-Shaders are text files in GLSL format and are largely ShaderToy-compatible, except that fragCoord is normalized rather than using pixels.
+- **JUCE 8.0+** (included as submodule)
+- **CMake 4.2+**
+- **C++20** compatible compiler
+- **Supported Platforms:** Windows, macOS (10.13+), Linux
+
+## Installation
+
+### Adding Lime to Your CMake Project
+
+1. Add Lime as a submodule:
+```bash
+git submodule add https://github.com/Toddler-Boy/Lime.git modules/lime
+```
+
+2. In your `CMakeLists.txt`:
+```cmake
+add_subdirectory(modules/lime/modules)
+
+target_link_libraries(YourTarget PRIVATE
+    lime_Logger              # For logging
+    lime_ShaderToyComponent  # Simple render-pipeline with openGL shaders
+    # ... other lime modules as needed
+)
+```
+
+3. Lime is automatically in the JUCE Header:
+```cpp
+#include <JuceHeader.h>
+```
+
+## Modules
+
+Lime is organized into focused modules that can be included independently:
+
+| Module | Description |
+|--------|-------------|
+| **lime_Logger** | Basic juce::Logger implementation in a separate Windows/Component |
+| **lime_ShaderToyComponent** | Simple render-pipeline with openGL shaders |
+
+
+## Features
+
+### Logger (lime_Logger)
+- Call `setCurrentLogger` as early as possible
+- Multiple log-levels (debug, log, info, warning, error) with colored rendering
+- Logs can be saved into a file
+
+### ShaderToyComponent (lime_ShaderToyComponent)
+- Create render pipelines with a simple JSON file or with a few lines of code.
+- Everything is hot-reloaded: textures, shaders, and even the JSON itself.
+- Shaders are text files in GLSL format and are largely ShaderToy-compatible, except that fragCoord is normalized rather than using pixels.
