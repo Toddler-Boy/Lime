@@ -102,11 +102,11 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 				juce::gl::glBindTexture ( juce::gl::GL_TEXTURE_2D, 0 );
 				juce::gl::glBindTexture ( juce::gl::GL_TEXTURE_3D, 0 );
 
-				if ( texture->newTexture.isValid () )
+				if ( texture->newTexture && texture->newTexture->isValid () )
 				{
 					if ( texture->lock.try_lock () )
 					{
-						texture->glTexture.loadImage ( texture->newTexture.data.data (), texture->newTexture.width, texture->newTexture.height, texture->newTexture.pixLen, texture->newTexture.width * texture->newTexture.pixLen, texture->yFlipped, texture->generateMipmaps, texture->isUint );
+						texture->glTexture.loadImage ( texture->newTexture->data.data (), texture->newTexture->width, texture->newTexture->height, texture->newTexture->pixLen, texture->newTexture->width * texture->newTexture->pixLen, texture->yFlipped, texture->generateMipmaps, texture->isUint );
 
 						texture->lock.unlock ();
 					}
@@ -456,10 +456,10 @@ void shaderTarget::compileOpenGLShaderProgram ()
 		{
 			fragmentPrefix += "uniform ";
 
-			if ( texture->newTexture.isValid () && texture->isUint )				fragmentPrefix += "usampler2D";
-			else if ( texture->imgTexture.isSingleChannel () && texture->isUint )	fragmentPrefix += "usampler2D";
-			else if ( texture->glTexture.is3D () )									fragmentPrefix += "sampler3D";
-			else																	fragmentPrefix += "sampler2D";
+			if ( texture->newTexture && texture->newTexture->isValid () && texture->isUint )	fragmentPrefix += "usampler2D";
+			else if ( texture->imgTexture.isSingleChannel () && texture->isUint )				fragmentPrefix += "usampler2D";
+			else if ( texture->glTexture.is3D () )												fragmentPrefix += "sampler3D";
+			else																				fragmentPrefix += "sampler2D";
 
 			fragmentPrefix += " " + channelName + ";\n";
 

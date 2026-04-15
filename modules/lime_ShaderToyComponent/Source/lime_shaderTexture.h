@@ -23,7 +23,7 @@ struct shaderTexture
 	std::atomic<bool>	textureUpdated = false;
 	juce::String		name;
 
-	openGL_Image		newTexture;
+	const openGL_Image*	newTexture;
 	juce::Image			imgTexture;
 	juce::Image			lut3D;
 	shaderFloatTexture	floatTexture;
@@ -37,7 +37,7 @@ struct shaderTexture
 
 	void unload ()
 	{
-		newTexture = {};
+		newTexture = nullptr;
 		imgTexture = {};
 		lut3D = {};
 		floatTexture = {};
@@ -49,7 +49,7 @@ struct shaderTexture
 		if ( lock.try_lock () )
 		{
 			unload ();
-			newTexture = img;
+			newTexture = &img;
 			yFlipped = _yFlipped;
 			generateMipmaps = _generateMipMaps;
 			isUint = _isUint;
@@ -99,7 +99,7 @@ struct shaderTexture
 
 	bool isValid () const
 	{
-		return		newTexture.isValid ()
+		return		( newTexture && newTexture->isValid () )
 				||	imgTexture.isValid ()
 				||	lut3D.isValid ()
 				||	! floatTexture.floatPalette.empty ();
