@@ -23,7 +23,7 @@ struct shaderTexture
 	std::atomic<bool>	textureUpdated = false;
 	juce::String		name;
 
-	const openGL_Image*	newTexture;
+	const openGL_Image*	newTexture = nullptr;
 	juce::Image			imgTexture;
 	juce::Image			lut3D;
 	shaderFloatTexture	floatTexture;

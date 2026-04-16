@@ -144,6 +144,7 @@ private:
 
 	// Index buffer & YUV/YIQ palette -> lumaChromaTarget
 	shaderTarget*	indexTarget;
+	openGL_Image	indexBuffer;
 	shaderTexture*	indexSourceTexture;
 	shaderTexture*	lumaChromaPalette;
 

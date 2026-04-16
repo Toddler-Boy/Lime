@@ -9,6 +9,7 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const juce::File& _root
 	: ShaderToyComponent ( canHaveChildren )
 	, juce::Thread ( "CRTEmulation webcam thread" )
 	, res ( _res )
+	, indexBuffer ( 1, 384, 272 )
 {
 	setName ( "lime::CRTEmulation" );
 	setOpaque ( true );
@@ -21,7 +22,7 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const juce::File& _root
 	// All intermittent textures needed (index + palette -> YUV/YIQ -> RGB -> CRT emulation)
 	//
 	indexSourceTexture = addTexture ( "/C64 index buffer" );
-	indexSourceTexture->fromImage ( openGL_Image ( 1, 384, 272 ), false, false, true );
+	indexSourceTexture->fromImage ( indexBuffer, false, false, true );
 	lumaChromaPalette = addTexture ( "/YUV/YIQ palette" );
 	lumaChromaSourceTexture = addTexture ( "/YUV/YIQ image" );
 	crtSourceTexture = addTexture ( "/RGB image" );
