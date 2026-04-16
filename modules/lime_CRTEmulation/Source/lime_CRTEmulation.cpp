@@ -795,13 +795,14 @@ void CRTEmulation::setIndexTextureSource ( const openGL_Image& img )
 
 void CRTEmulation::setLumaChromaPalette ( const std::span<float>& palette )
 {
+	constexpr auto	channels = 3;	// YUV or YIQ
 	constexpr auto	height = 3;	// three palettes stacked vertically in one texture (2x YUV + 1x YIQ)
 	const auto	width = int ( palette.size () / height );
 
 	indexTarget->lock ();
 	lumaChromaTarget->lock ();
 
-	lumaChromaPaletteSrc = { palette, width / 3, height };
+	lumaChromaPaletteSrc = { palette, width / channels, height };
 	lumaChromaPalette->fromFloatVector ( lumaChromaPaletteSrc, false );
 
 	lumaChromaTarget->unlock ();
@@ -885,7 +886,7 @@ void CRTEmulation::addWebcamListener ()
 	if ( ! camera )
 	{
 		camera = std::make_unique<Webcam> ( 1920, 1080, 60 );
-		if ( !camera->getError ().empty () )
+		if ( ! camera->getError ().empty () )
 		{
 			Z_WARN ( "Webcam error: " << camera->getError () );
 			camera.reset ();
@@ -907,28 +908,30 @@ void CRTEmulation::addWebcamListener ()
 				{
 					if ( width == strideY )
 					{
-						std::copy_n ( data, width * height, camImageNV12_Y.data.data () );
+						std::memmove ( camImageNV12_Y.getData (), data, width * height );
 					}
 					else
 					{
 						// If stride is larger than width, we need to copy line by line
-						for ( int y = 0; y < height; ++y )
-							std::copy_n ( data + y * strideY, width, camImageNV12_Y.data.data () + y * width );
+						for ( auto y = 0; y < height; ++y )
+							std::memmove ( camImageNV12_Y.getLinePointer ( y ), data + y * strideY, width );
 					}
 					webcamTextureNV12_Y->fromImage ( camImageNV12_Y, false );
 				}
 
 				// Upload UV as texture
 				{
+					const auto	uvDataStart = data + width * height;
+
 					if ( width == strideUV )
 					{
-						std::copy_n ( (uint16_t*)( data + width * height ), ( width / 2 ) * ( height / 2 ), (uint16_t*)( camImageNV12_UV.data.data () ) );
+						std::memmove ( camImageNV12_UV.getData (), uvDataStart, ( width / 2 ) * ( height / 2 ) * 2 );
 					}
 					else
 					{
 						// If stride is larger than width, we need to copy line by line
-						for ( int y = 0; y < height / 2; ++y )
-							std::copy_n ( (uint16_t*)( data + width * height + y * strideUV ), width / 2, (uint16_t*)( camImageNV12_UV.data.data () + y * width ) );
+						for ( auto y = 0; y < height / 2; ++y )
+							std::memmove ( camImageNV12_UV.getLinePointer ( y ), uvDataStart + y * strideUV, width );
 					}
 					webcamTextureNV12_UV->fromImage ( camImageNV12_UV, false );
 				}

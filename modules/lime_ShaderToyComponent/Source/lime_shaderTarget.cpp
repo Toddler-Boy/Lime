@@ -110,9 +110,9 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 						{
 							using T = std::decay_t<decltype( arg )>;
 
-							if constexpr ( std::is_same_v<T, const openGL_Image*> )
+							if constexpr ( std::is_same_v<T, openGL_Image> )
 							{
-								texture->glTexture.loadImage ( arg->data.data (), arg->width, arg->height, arg->pixLen, arg->width * arg->pixLen, texture->yFlipped, texture->generateMipmaps, texture->isUint );
+								texture->glTexture.loadImage ( arg.getData (), arg.width, arg.height, arg.pixLen, arg.width * arg.pixLen, texture->yFlipped, texture->generateMipmaps, texture->isUint );
 							}
 							else if constexpr ( std::is_same_v<T, juce::Image> )
 							{
@@ -456,9 +456,9 @@ uniform int			iFrame;						// shader playback frame
 			{
 				using T = std::decay_t<decltype( arg )>;
 
-				if constexpr ( std::is_same_v<T, const openGL_Image*> )
+				if constexpr ( std::is_same_v<T, openGL_Image> )
 				{
-					if ( arg && arg->isValid () && texture->isUint )
+					if ( arg.isValid () && texture->isUint )
 						return "usampler2D";
 				}
 				else if constexpr ( std::is_same_v<T, juce::Image> )

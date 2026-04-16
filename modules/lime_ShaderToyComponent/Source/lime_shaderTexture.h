@@ -24,7 +24,7 @@ struct shaderTexture
 	// Define the possible types the texture source can be
 	using TextureSource = std::variant<
 		std::monostate,         // Represents "empty/unloaded"
-		const openGL_Image*,    // Pointer to external image
+		openGL_Image,			// Simple all purpose buffer
 		juce::Image,            // JUCE Image (standard or 3D LUT)
 		shaderFloatTexture      // Custom float palette
 	>;
@@ -69,7 +69,7 @@ struct shaderTexture
 
 	void fromImage ( const openGL_Image& img, bool _yFlipped = true, bool _genMip = true, bool _isUint = false )
 	{
-		setSource ( &img, _yFlipped, _genMip, _isUint, img.pixLen );
+		setSource ( img, _yFlipped, _genMip, _isUint, img.pixLen );
 	}
 
 	// Make sure we don't accept temporary openGL_Image objects
@@ -101,8 +101,8 @@ struct shaderTexture
 		return std::visit ( [] ( auto&& arg ) -> bool {
 			using T = std::decay_t<decltype( arg )>;
 
-			if constexpr ( std::is_same_v<T, const openGL_Image*> )
-				return arg && arg->isValid ();
+			if constexpr ( std::is_same_v<T, openGL_Image> )
+				return arg.isValid ();
 			else if constexpr ( std::is_same_v<T, juce::Image> )
 				return arg.isValid ();
 			else if constexpr ( std::is_same_v<T, shaderFloatTexture> )
