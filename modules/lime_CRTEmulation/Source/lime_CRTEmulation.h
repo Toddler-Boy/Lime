@@ -142,6 +142,9 @@ private:
 	openGL_Image	camImageNV12_Y { 1, 1920, 1080 };
 	openGL_Image	camImageNV12_UV { 2, 1920 / 2, 1080 / 2 };
 
+	// Palette object
+	shaderFloatTexture	lumaChromaPaletteSrc;
+
 	// Index buffer & YUV/YIQ palette -> lumaChromaTarget
 	shaderTarget*	indexTarget;
 	openGL_Image	indexBuffer;

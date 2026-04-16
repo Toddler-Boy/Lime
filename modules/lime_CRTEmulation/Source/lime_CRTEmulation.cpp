@@ -167,11 +167,11 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const juce::File& _root
 
 			if ( dst->isValid () )
 			{
-				auto	bzl = dst->imgTexture;
+				auto	bzl = std::get<juce::Image> ( dst->source );
 
 				// Blend overlay texture into bezel-mask
 				{
-					auto	ovl = juce::Image::BitmapData ( overlayTexture->imgTexture, juce::Image::BitmapData::readOnly );
+					auto	ovl = juce::Image::BitmapData ( std::get<juce::Image> ( overlayTexture->source ), juce::Image::BitmapData::readOnly );
 					auto	bzlDst = juce::Image::BitmapData ( bzl, juce::Image::BitmapData::readWrite );
 
 					for ( auto bzlY = 0; bzlY < edgeRect.getHeight (); ++bzlY )
@@ -796,12 +796,13 @@ void CRTEmulation::setIndexTextureSource ( const openGL_Image& img )
 void CRTEmulation::setLumaChromaPalette ( const std::span<float>& palette )
 {
 	constexpr auto	height = 3;	// three palettes stacked vertically in one texture (2x YUV + 1x YIQ)
-	const auto	width = int (  palette.size () / height );
+	const auto	width = int ( palette.size () / height );
 
 	indexTarget->lock ();
 	lumaChromaTarget->lock ();
 
-	lumaChromaPalette->fromFloatVector ( { palette, width / 3, height }, false );
+	lumaChromaPaletteSrc = { palette, width / 3, height };
+	lumaChromaPalette->fromFloatVector ( lumaChromaPaletteSrc, false );
 
 	lumaChromaTarget->unlock ();
 	indexTarget->unlock ();

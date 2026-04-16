@@ -102,44 +102,41 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 				juce::gl::glBindTexture ( juce::gl::GL_TEXTURE_2D, 0 );
 				juce::gl::glBindTexture ( juce::gl::GL_TEXTURE_3D, 0 );
 
-				if ( texture->newTexture && texture->newTexture->isValid () )
+				if ( texture->isValid () )
 				{
 					if ( texture->lock.try_lock () )
 					{
-						texture->glTexture.loadImage ( texture->newTexture->data.data (), texture->newTexture->width, texture->newTexture->height, texture->newTexture->pixLen, texture->newTexture->width * texture->newTexture->pixLen, texture->yFlipped, texture->generateMipmaps, texture->isUint );
+						std::visit ( [ texture ] ( auto&& arg )
+						{
+							using T = std::decay_t<decltype( arg )>;
 
-						texture->lock.unlock ();
-					}
-				}
-				else if ( texture->imgTexture.isValid () )
-				{
-					if ( texture->lock.try_lock () )
-					{
-						auto	bmp = juce::Image::BitmapData ( texture->imgTexture, juce::Image::BitmapData::readOnly );
-						auto	pixLen = texture->pixLen ? texture->pixLen : bmp.pixelStride;
-						auto	stride = texture->pixLen ? ( texture->pixLen * bmp.width ) : bmp.lineStride;
-						auto	width = texture->pixLen ? bmp.width / pixLen : bmp.width;
-						auto	height = texture->pixLen ? bmp.height / pixLen : bmp.height;
-						texture->glTexture.loadImage ( bmp.data, width, height, pixLen, stride, texture->yFlipped, texture->generateMipmaps, texture->isUint );
+							if constexpr ( std::is_same_v<T, const openGL_Image*> )
+							{
+								texture->glTexture.loadImage ( arg->data.data (), arg->width, arg->height, arg->pixLen, arg->width * arg->pixLen, texture->yFlipped, texture->generateMipmaps, texture->isUint );
+							}
+							else if constexpr ( std::is_same_v<T, juce::Image> )
+							{
+								auto	bmp = juce::Image::BitmapData ( arg, juce::Image::BitmapData::readOnly );
 
-						texture->lock.unlock ();
-					}
-				}
-				else if ( texture->lut3D.isValid () )
-				{
-					if ( texture->lock.try_lock () )
-					{
-						auto	bmp = juce::Image::BitmapData ( texture->lut3D, juce::Image::BitmapData::readOnly );
-						texture->glTexture.load3DLUT ( bmp.data, bmp.width, bmp.height, bmp.pixelStride );
+								if ( texture->is3DLUT )
+								{
+									texture->glTexture.load3DLUT ( bmp.data, bmp.width, bmp.height, bmp.pixelStride );
+								}
+								else
+								{
+									auto	pixLen = texture->pixLen ? texture->pixLen : bmp.pixelStride;
+									auto	stride = texture->pixLen ? ( texture->pixLen * bmp.width ) : bmp.lineStride;
+									auto	width = texture->pixLen ? bmp.width / pixLen : bmp.width;
+									auto	height = texture->pixLen ? bmp.height / pixLen : bmp.height;
+									texture->glTexture.loadImage ( bmp.data, width, height, pixLen, stride, texture->yFlipped, texture->generateMipmaps, texture->isUint );
+								}
+							}
+							else if constexpr ( std::is_same_v<T, shaderFloatTexture> )
+							{
+								texture->glTexture.loadFloatPalette ( arg.floatPalette.data (), arg.width, arg.height, 3, texture->yFlipped );
+							}
 
-						texture->lock.unlock ();
-					}
-				}
-				else if ( ! texture->floatTexture.floatPalette.empty () )
-				{
-					if ( texture->lock.try_lock () )
-					{
-						texture->glTexture.loadFloatPalette ( texture->floatTexture.floatPalette.data (), texture->floatTexture.width, texture->floatTexture.height, 3, texture->yFlipped );
+						}, texture->source );
 
 						texture->lock.unlock ();
 					}
@@ -412,41 +409,41 @@ void shaderTarget::compileOpenGLShaderProgram ()
 	}
 
 	const static std::string	vertexShader = R"(
-		#version 410 core
+#version 410 core
 
-		uniform vec3		iResolution;				// viewport resolution (in pixels)
+uniform vec3		iResolution;				// viewport resolution (in pixels)
 
-		layout (location = 0) in vec4 aPos;
-		layout (location = 1) in vec2 aTexCoord;
+layout (location = 0) in vec4 aPos;
+layout (location = 1) in vec2 aTexCoord;
 
-		out vec2 fragCoord;
+out vec2 fragCoord;
 
-		void main ()
-		{
-			vec2	pos_RatioTo1 = aPos.xy / iResolution.xy;
-			vec2	clip_space = pos_RatioTo1 * 2 - 1;
+void main ()
+{
+	vec2	pos_RatioTo1 = aPos.xy / iResolution.xy;
+	vec2	clip_space = pos_RatioTo1 * 2 - 1;
 
-			gl_Position = vec4 ( clip_space * vec2 ( 1, -1 ), 1.0, aPos.w );
-			fragCoord = aTexCoord;
-		}
-	)";
+	gl_Position = vec4 ( clip_space * vec2 ( 1, -1 ), 1.0, aPos.w );
+	fragCoord = aTexCoord;
+}
+)";
 
 	std::string	fragmentPrefix = R"(
-		#version 410 core
+#version 410 core
 
-		precision highp float;
-		precision highp int;
-		precision highp sampler2D;
-		precision highp sampler3D;
+precision highp float;
+precision highp int;
+precision highp sampler2D;
+precision highp sampler3D;
 
-		in		vec2 fragCoord;							// already normalized ( 0.0 to 1.0 )
-		out		vec4 fragColor;
+in		vec2 fragCoord;							// already normalized ( 0.0 to 1.0 )
+out		vec4 fragColor;
 
-		uniform vec3		iResolution;				// viewport resolution (in pixels)
-		uniform float		iScale;						// viewport scale
-		uniform float		iTime;						// shader playback time (in seconds)
-		uniform int			iFrame;						// shader playback frame
-	)";
+uniform vec3		iResolution;				// viewport resolution (in pixels)
+uniform float		iScale;						// viewport scale
+uniform float		iTime;						// shader playback time (in seconds)
+uniform int			iFrame;						// shader playback frame
+)";
 
 	for ( auto index = 0; const auto& tex : textures )
 	{
@@ -455,11 +452,27 @@ void shaderTarget::compileOpenGLShaderProgram ()
 		if ( auto texture = tex.tex )
 		{
 			fragmentPrefix += "uniform ";
+			fragmentPrefix += std::visit ( [ & ] ( auto&& arg ) -> std::string
+			{
+				using T = std::decay_t<decltype( arg )>;
 
-			if ( texture->newTexture && texture->newTexture->isValid () && texture->isUint )	fragmentPrefix += "usampler2D";
-			else if ( texture->imgTexture.isSingleChannel () && texture->isUint )				fragmentPrefix += "usampler2D";
-			else if ( texture->glTexture.is3D () )												fragmentPrefix += "sampler3D";
-			else																				fragmentPrefix += "sampler2D";
+				if constexpr ( std::is_same_v<T, const openGL_Image*> )
+				{
+					if ( arg && arg->isValid () && texture->isUint )
+						return "usampler2D";
+				}
+				else if constexpr ( std::is_same_v<T, juce::Image> )
+				{
+					if ( arg.isValid () && arg.isSingleChannel () && texture->isUint )
+						return "usampler2D";
+				}
+
+				if ( texture->is3DLUT )
+					return "sampler3D";
+
+				return "sampler2D";
+
+			}, texture->source );
 
 			fragmentPrefix += " " + channelName + ";\n";
 

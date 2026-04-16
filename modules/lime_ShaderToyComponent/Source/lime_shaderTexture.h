@@ -2,6 +2,8 @@
 
 #include <mutex>
 #include <span>
+#include <variant>
+#include <optional>
 
 #include "lime_openGL_Image.h"
 #include "lime_openGL_Texture.h"
@@ -19,91 +21,97 @@ struct shaderFloatTexture
 
 struct shaderTexture
 {
+	// Define the possible types the texture source can be
+	using TextureSource = std::variant<
+		std::monostate,         // Represents "empty/unloaded"
+		const openGL_Image*,    // Pointer to external image
+		juce::Image,            // JUCE Image (standard or 3D LUT)
+		shaderFloatTexture      // Custom float palette
+	>;
+
 	std::mutex			lock;
 	std::atomic<bool>	textureUpdated = false;
 	juce::String		name;
 
-	const openGL_Image*	newTexture = nullptr;
-	juce::Image			imgTexture;
-	juce::Image			lut3D;
-	shaderFloatTexture	floatTexture;
+	TextureSource       source;
+
 	openGL_Texture		glTexture;
 
 	std::function<void ( shaderTexture* dst, const juce::File& root )>		load;
+
 	bool				yFlipped = true;
 	bool				generateMipmaps = false;
 	bool				isUint = false;
 	int					pixLen = 0;
+	bool				is3DLUT = false;
 
 	void unload ()
 	{
-		newTexture = nullptr;
-		imgTexture = {};
-		lut3D = {};
-		floatTexture = {};
+		source = std::monostate {};
 		textureUpdated = true;
 	}
 
-	void fromImage ( const openGL_Image& img, const bool _yFlipped = true, const bool _generateMipMaps = true, const bool _isUint = false )
+	template<typename T>
+	void setSource ( T&& newSrc, bool _yFlipped = true, bool _genMipmaps = false, bool _isUint = false, int _pixLen = 0, bool _is3DLUT = false )
 	{
 		if ( lock.try_lock () )
 		{
-			unload ();
-			newTexture = &img;
+			source = std::forward<T> ( newSrc );
 			yFlipped = _yFlipped;
-			generateMipmaps = _generateMipMaps;
+			generateMipmaps = _genMipmaps;
 			isUint = _isUint;
-			pixLen = img.pixLen;
-
+			pixLen = _pixLen;
+			is3DLUT = _is3DLUT;
+			textureUpdated = true;
 			lock.unlock ();
 		}
 	}
 
-	void fromImage ( const juce::Image& img, const bool _yFlipped = true, const bool _generateMipMaps = true, const bool _isUint = false, const int _pixLen = 0 )
+	void fromImage ( const openGL_Image& img, bool _yFlipped = true, bool _genMip = true, bool _isUint = false )
 	{
-		if ( lock.try_lock () )
-		{
-			unload ();
-			imgTexture = img;
-			yFlipped = _yFlipped;
-			generateMipmaps = _generateMipMaps;
-			isUint = _isUint;
-			pixLen = _pixLen;
+		setSource ( &img, _yFlipped, _genMip, _isUint, img.pixLen );
+	}
 
-			lock.unlock ();
-		}
+	// Make sure we don't accept temporary openGL_Image objects
+	void fromImage ( const openGL_Image&& img, bool = true, bool = true, bool = false ) = delete;
+
+	void fromImage ( const juce::Image& img, bool _yFlipped = true, bool _genMip = true, bool _isUint = false, int _pixLen = 0 )
+	{
+		setSource ( img, _yFlipped, _genMip, _isUint, _pixLen );
 	}
 
 	void from3DLUT ( const juce::Image& lut )
 	{
-		if ( lock.try_lock () )
-		{
-			unload ();
-			lut3D = lut;
-
-			lock.unlock ();
-		}
+		setSource ( lut, true, false, false, 0, true );
 	}
 
-	void fromFloatVector ( const shaderFloatTexture& txt, const bool _yFlipped = true )
+	void fromFloatVector ( const shaderFloatTexture& txt, bool _yFlipped = false )
 	{
-		if ( lock.try_lock () )
-		{
-			unload ();
-			floatTexture = txt;
-			yFlipped = _yFlipped;
-
-			lock.unlock ();
-		}
+		setSource ( txt, _yFlipped );
 	}
+
+	// Make sure we don't accept temporary shaderFloatTexture objects
+	void fromFloatVector ( const shaderFloatTexture&& txt, bool = false ) = delete;
 
 	bool isValid () const
 	{
-		return		( newTexture && newTexture->isValid () )
-				||	imgTexture.isValid ()
-				||	lut3D.isValid ()
-				||	! floatTexture.floatPalette.empty ();
+		if ( std::holds_alternative<std::monostate> ( source ) )
+			return false;
+
+		return std::visit ( [] ( auto&& arg ) -> bool {
+			using T = std::decay_t<decltype( arg )>;
+
+			if constexpr ( std::is_same_v<T, const openGL_Image*> )
+				return arg && arg->isValid ();
+			else if constexpr ( std::is_same_v<T, juce::Image> )
+				return arg.isValid ();
+			else if constexpr ( std::is_same_v<T, shaderFloatTexture> )
+				return ! arg.floatPalette.empty ();
+			return false;
+
+		}, source );
 	}
 };
 //-----------------------------------------------------------------------------
-}
+
+} // namespace lime
