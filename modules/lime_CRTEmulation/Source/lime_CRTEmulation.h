@@ -162,7 +162,6 @@ private:
 	shaderTexture*	crtProcessedTexture[ 2 ];
 	int				crtProcessedTextureIndex = 0;
 
-	shaderTexture*	shadowTexture;
 	shaderTexture*	glassTexture;
 	shaderTexture*	webcamTextureNV12_Y = nullptr;
 	shaderTexture*	webcamTextureNV12_UV = nullptr;
@@ -192,6 +191,7 @@ private:
 	// Multipliers
 	float	mulDaytime = 1.0f;
 	float	mulBezel = 1.0f;
+	float	mulShadow = 1.0f;
 	float	mulReflection = 1.0f;
 	float	mulGrain = 1.0f;
 
@@ -229,7 +229,9 @@ private:
 	//
 	bool parseOverlayProfile ( const juce::String& name );
 	juce::Rectangle<int> loadPartialTexture ( lime::shaderTexture* dst, const juce::File& root );
-	static juce::Rectangle<int> findImageRect ( juce::Image& img );
+	static juce::Rectangle<int> getCropBounds ( juce::Image& img );
+	static juce::Rectangle<int> getHoleBounds ( juce::Image& img );
+	static juce::Rectangle<float> expandHoleBounds ( const juce::Rectangle<int>& hole, const float targetRatio, const float expansionPixels );
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR ( CRTEmulation )
 };

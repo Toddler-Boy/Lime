@@ -80,14 +80,6 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const juce::File& _root
 	crtProcessedTexture[ 1 ]->generateMipmaps = true;
 
 	//
-	// Shadow texture (on top of CRT image, adds shadows and ambient occlusion)
-	//
-	shadowTexture = addTexture ( "/overlay shadows", [ this ] ( lime::shaderTexture* dst, const juce::File& root )
-	{
-		loadPartialTexture ( dst, root );
-	} );
-
-	//
 	// Glass reflection texture
 	//
 	glassTexture = addTexture ( "../reflections.png", [] ( lime::shaderTexture* dst, const juce::File& root )
@@ -117,10 +109,9 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const juce::File& _root
 	crtTargetProcessed = addTarget ( "crt-curved.glsl" );
 	crtTargetProcessed->setEnableBlend ( false );
 	crtTargetProcessed->setTexture ( 0, crtProcessedTexture[ 0 ] );
-	crtTargetProcessed->setTexture ( 1, shadowTexture );
-	crtTargetProcessed->setTexture ( 2, glassTexture );
-	crtTargetProcessed->setTexture ( 3, webcamTextureNV12_Y );
-	crtTargetProcessed->setTexture ( 4, webcamTextureNV12_UV );
+	crtTargetProcessed->setTexture ( 1, glassTexture );
+	crtTargetProcessed->setTexture ( 2, webcamTextureNV12_Y );
+	crtTargetProcessed->setTexture ( 3, webcamTextureNV12_UV );
 	crtTargetProcessed->setTextureClampMode ( 0, juce::gl::GL_CLAMP_TO_BORDER );
 	crtTargetProcessed->setTextureClampMode ( 1, juce::gl::GL_MIRRORED_REPEAT );
 
@@ -133,6 +124,14 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const juce::File& _root
 
 		dst->fromImage ( ovlImg );
 		overlayImgRect = ovlImg.getBounds ().toFloat ();
+
+		// Calculate hole in overlay (where the screen is)
+		const auto	pixelHole = getHoleBounds ( ovlImg );
+		const auto	hole = expandHoleBounds ( pixelHole, res.scaledWidth * 0.937f / float ( res.scaledHeight ), 1.0f );
+
+		ovlyCenter = hole.getCentre ();
+		ovlyWidth = hole.getWidth ();
+		ovlyHeight = hole.getHeight ();
 	} );
 
 	//
@@ -359,8 +358,7 @@ bool CRTEmulation::isBezelEnabled () const
 bool CRTEmulation::isShadowEnabled () const
 {
 	return		curSettings.overlay
-			&&	overlayTexture && overlayTexture->isValid ()
-			&&	shadowTexture && shadowTexture->isValid ();
+			&&	overlayTexture && overlayTexture->isValid ();
 }
 //-----------------------------------------------------------------------------
 
@@ -437,7 +435,6 @@ void CRTEmulation::loadOverlayProfile ( const juce::String& profileName )
 	setTextureSource ( overlayTexture, profileName + "/overlay.png" );
 	setTextureSource ( bezelTexture, profileName + "/bezel.png" );
 	setTextureSource ( lightTexture, profileName + "/lights.png" );
-	setTextureSource ( shadowTexture, profileName + "/shadows.png" );
 }
 //-----------------------------------------------------------------------------
 
@@ -477,8 +474,6 @@ bool CRTEmulation::parseOverlayProfile ( const juce::String& profileName )
 {
 	ovlyProfileName = profileName;
 
-	ovlyWidth = 0.0f;
-
 	// Check if profile exists
 	auto	file = rootOverlays.getChildFile ( profileName ).getChildFile ( "profile.yml" );
 	if ( ! file.existsAsFile () )
@@ -488,6 +483,7 @@ bool CRTEmulation::parseOverlayProfile ( const juce::String& profileName )
 	{
 		{ "multipliers/daytime",	1.0f },
 		{ "multipliers/bezel",		1.0f },
+		{ "multipliers/shadow",		1.0f },
 		{ "multipliers/reflection",	1.0f },
 		{ "multipliers/grain",		1.0f },
 
@@ -498,8 +494,8 @@ bool CRTEmulation::parseOverlayProfile ( const juce::String& profileName )
 		{ "bezel/zoom",			YamlConfig::vec2f { 1.0f, 1.0f } },
 		{ "bezel/shift",		YamlConfig::vec2f { 0.0f, 0.0f } },
 
-		{ "shadow/zoom",		YamlConfig::vec2f { 1.0f, 1.0f } },
-		{ "shadow/shift",		YamlConfig::vec2f { 0.0f, 0.0f } },
+		{ "shadow/offset",		YamlConfig::vec2f { 0.2f, 0.3f } },
+		{ "shadow/blur",		4.0f },
 	};
 
 	auto	yml = YamlConfig ( overlayDefaults );
@@ -507,16 +503,9 @@ bool CRTEmulation::parseOverlayProfile ( const juce::String& profileName )
 
 	mulDaytime = yml.get<float> ( "multipliers/daytime" );
 	mulBezel = yml.get<float> ( "multipliers/bezel" );
+	mulShadow = yml.get<float> ( "multipliers/shadow" );
 	mulReflection = yml.get<float> ( "multipliers/reflection" );
 	mulGrain = yml.get<float> ( "multipliers/grain" );
-
-	//
-	// Get screen properties
-	//
-	{
-		std::tie ( ovlyCenter.x, ovlyCenter.y ) = yml.get<YamlConfig::vec2f> ( "screen/center" );
-		std::tie ( ovlyWidth, ovlyHeight ) = yml.get<YamlConfig::vec2f> ( "screen/size" );
-	}
 
 	//
 	// Bezel properties
@@ -536,11 +525,11 @@ bool CRTEmulation::parseOverlayProfile ( const juce::String& profileName )
 	// Shadows
 	//
 	{
-		const auto [ zoomX, zoomY ] = yml.get<YamlConfig::vec2f> ( "shadow/zoom" );
-		setGlobalUniform ( "crtShadowScale", { zoomX, zoomY } );
+		const auto [ shiftX, shiftY ] = yml.get<YamlConfig::vec2f> ( "shadow/offset" );
+		setGlobalUniform ( "ovlShadowOffset", { shiftX * 0.1f, shiftY * 0.1f } );
 
-		const auto [ shiftX, shiftY ] = yml.get<YamlConfig::vec2f> ( "shadow/shift" );
-		setGlobalUniform ( "crtShadowTranslate", { shiftX, shiftY } );
+		const auto	blur = yml.get<float> ( "shadow/blur" );
+		setGlobalUniform ( "ovlShadowBlur", blur );
 	}
 
 	setSettings ( curSettings );
@@ -610,7 +599,7 @@ void CRTEmulation::setSettings ( const settings& set )
 	//
 	// Monitor shadows (only visible when overlays are enabled)
 	//
-	setGlobalUniform ( "crtShadow", isShadowEnabled () * set.overlayShadow * 0.01f );
+	setGlobalUniform ( "ovlShadow", isShadowEnabled () * set.overlayShadow * 0.01f * mulShadow );
 
 	// Overlay uniforms
 	setGlobalUniform ( "ovlDust", set.overlayDust * 0.01f );
@@ -803,7 +792,7 @@ juce::Rectangle<int> CRTEmulation::loadPartialTexture ( lime::shaderTexture* dst
 
 	if ( auto rfl = juce::SoftwareImageType ().convert ( juce::ImageFileFormat::loadFrom ( root ) ); rfl.isARGB () )
 	{
-		auto	edgeRect = findImageRect ( rfl );
+		auto	edgeRect = getCropBounds ( rfl );
 
 		dst->fromImage ( rfl.getClippedImage ( edgeRect ) );
 
@@ -814,27 +803,27 @@ juce::Rectangle<int> CRTEmulation::loadPartialTexture ( lime::shaderTexture* dst
 }
 //-----------------------------------------------------------------------------
 
-juce::Rectangle<int> CRTEmulation::findImageRect ( juce::Image& img )
+juce::Rectangle<int> CRTEmulation::getCropBounds ( juce::Image& img )
 {
 	// Find smallest rectangle still containing all pixels from image
-	auto	bmp = juce::Image::BitmapData ( img, juce::Image::BitmapData::readOnly );
+	const auto	bmp = juce::Image::BitmapData ( img, juce::Image::BitmapData::readOnly );
 	const auto	pixCnt = bmp.width * bmp.height;
 
 	// Top
 	auto	y = 0;
-	for ( ; y < pixCnt && !bmp.data[ y * bmp.pixelStride + 3 ]; ++y );
+	for ( ; y < pixCnt && ! bmp.data[ y * bmp.pixelStride + 3 ]; ++y );
 	y /= bmp.width;
 
 	// Bottom
 	auto	h = pixCnt - 1;
-	for ( ; h >= y && !bmp.data[ h * bmp.pixelStride + 3 ]; --h );
+	for ( ; h >= y && ! bmp.data[ h * bmp.pixelStride + 3 ]; --h );
 	h /= bmp.width;
 
 	auto isColumnUsed = [ &bmp ] ( const int col ) -> bool
 	{
 		auto	data = bmp.data + col * bmp.pixelStride + 3;
 		int		testY = 0;
-		for ( ; testY < bmp.height && !data[ testY * bmp.lineStride ]; ++testY );
+		for ( ; testY < bmp.height && ! data[ testY * bmp.lineStride ]; ++testY );
 		return testY < bmp.height;
 	};
 
@@ -847,6 +836,65 @@ juce::Rectangle<int> CRTEmulation::findImageRect ( juce::Image& img )
 	for ( ; w >= x && ! isColumnUsed ( w ); --w );
 
 	return { x, y, ( w + 1 ) - x, ( h + 1 ) - y };
+}
+//-----------------------------------------------------------------------------
+
+juce::Rectangle<int> CRTEmulation::getHoleBounds ( juce::Image& img )
+{
+	// Find smallest rectangle that covers all non-opaque pixels
+	const auto	bmp = juce::Image::BitmapData ( img, juce::Image::BitmapData::readOnly );
+	const auto	pixCnt = bmp.width * bmp.height;
+
+	// Top
+	auto	y = 0;
+	for ( ; y < pixCnt && bmp.data[ y * bmp.pixelStride + 3 ] == 255; ++y );
+	y /= bmp.width;
+
+	// Bottom
+	auto	h = pixCnt - 1;
+	for ( ; h >= y && bmp.data[ h * bmp.pixelStride + 3 ] == 255; --h );
+	h /= bmp.width;
+
+	auto isColumnOpaque = [ &bmp ] ( const int col ) -> bool
+	{
+		auto	data = bmp.data + col * bmp.pixelStride + 3;
+		auto	testY = 0;
+		for ( ; testY < bmp.height && data[ testY * bmp.lineStride ] == 255; ++testY );
+		return testY < bmp.height;
+	};
+
+	// Left
+	auto	x = 0;
+	for ( ; x < bmp.width && ! isColumnOpaque ( x ); ++x );
+
+	// Right
+	auto	w = bmp.width - 1;
+	for ( ; w >= x && ! isColumnOpaque ( w ); --w );
+
+	return { x, y, ( w + 1 ) - x, ( h + 1 ) - y };
+}
+//-----------------------------------------------------------------------------
+
+juce::Rectangle<float> CRTEmulation::expandHoleBounds ( const juce::Rectangle<int>& hole, const float targetRatio, const float expansionPixels )
+{
+	auto	newRect = hole.toFloat ();
+	auto	currentRatio = newRect.getWidth () / newRect.getHeight ();
+
+	if ( currentRatio < targetRatio )
+		newRect = newRect.withWidth ( newRect.getHeight () * targetRatio );
+	else
+		newRect = newRect.withHeight ( newRect.getWidth () / targetRatio );
+
+	// Center it back onto the original hole
+	newRect.setCentre ( hole.toFloat ().getCentre () );
+
+	// Proportional expansion
+	if ( targetRatio >= 1.0f )
+		newRect.expand ( expansionPixels * targetRatio, expansionPixels );
+	else
+		newRect.expand ( expansionPixels, expansionPixels / targetRatio );
+
+	return newRect;
 }
 //-----------------------------------------------------------------------------
 
