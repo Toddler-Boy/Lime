@@ -494,15 +494,9 @@ bool CRTEmulation::parseOverlayProfile ( const juce::String& profileName )
 		{ "screen/center",		YamlConfig::vec2f { 0.0f, 0.0f } },
 		{ "screen/size",		YamlConfig::vec2f { 0.0f, 0.0f } },
 
-		{ "bezel/one/amount",	0.7f },
-		{ "bezel/one/radius",	2 },
-		{ "bezel/one/zoom",		YamlConfig::vec2f { 1.0f, 1.0f } },
-		{ "bezel/one/shift",	YamlConfig::vec2f { 0.0f, 0.0f } },
-
-		{ "bezel/two/amount",	0.5f },
-		{ "bezel/two/radius",	20 },
-		{ "bezel/two/zoom",		YamlConfig::vec2f { 1.0f, 1.0f } },
-		{ "bezel/two/shift",	YamlConfig::vec2f { 0.0f, 0.0f } },
+		{ "bezel/radius",		30 },
+		{ "bezel/zoom",			YamlConfig::vec2f { 1.0f, 1.0f } },
+		{ "bezel/shift",		YamlConfig::vec2f { 0.0f, 0.0f } },
 
 		{ "shadow/zoom",		YamlConfig::vec2f { 1.0f, 1.0f } },
 		{ "shadow/shift",		YamlConfig::vec2f { 0.0f, 0.0f } },
@@ -528,22 +522,14 @@ bool CRTEmulation::parseOverlayProfile ( const juce::String& profileName )
 	// Bezel properties
 	//
 	{
-		auto setBezelValues = [ this, &yml ] ( const std::string& sectionName, const std::string& appendix )
-		{
-			setGlobalUniform ( "rflAmount" + appendix, yml.get<float> ( sectionName + "amount" ) );
+		const auto	radius = yml.get<int> ( "bezel/radius" );
+		setGlobalUniform ( "rflRadius", std::clamp ( radius, 2, 50 ) );
 
-			const auto	radius = yml.get<int> ( sectionName + "radius" );
-			setGlobalUniform ( "rflRadius" + appendix, std::clamp ( radius, 2, 50 ) );
+		const auto [ zoomX, zoomY ] = yml.get<YamlConfig::vec2f> ( "bezel/zoom" );
+		setGlobalUniform ( "rflZoom", { zoomX, zoomY } );
 
-			const auto [ zoomX, zoomY ] = yml.get<YamlConfig::vec2f> ( sectionName + "zoom" );
-			setGlobalUniform ( "rflZoom" + appendix, { zoomX, zoomY } );
-
-			const auto [shiftX, shiftY] = yml.get<YamlConfig::vec2f> ( sectionName + "shift" );
-			setGlobalUniform ( "rflShift" + appendix, { shiftX * 0.1f, shiftY * 0.1f } );
-		};
-
-		setBezelValues ( "bezel/one/", "1" );
-		setBezelValues ( "bezel/two/", "2" );
+		const auto [shiftX, shiftY] = yml.get<YamlConfig::vec2f> ( "bezel/shift" );
+		setGlobalUniform ( "rflShift", { shiftX * 0.1f, shiftY * 0.1f } );
 	}
 
 	//
