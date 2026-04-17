@@ -150,7 +150,8 @@ void ShaderToyComponent::setRoot ( const juce::File& _root, const juce::File& _l
 	// (Re)load all textures
 	for ( auto& dst : textures )
 		if ( ! dst->name.startsWithChar ( '/' ) && dst->load )
-			dst->load ( dst.get (), root );
+			if ( auto file = findFile ( dst->name ); file.existsAsFile () )
+				dst->load ( dst.get (), file);
 }
 //-----------------------------------------------------------------------------
 
@@ -591,7 +592,8 @@ void ShaderToyComponent::fileChanged ( const juce::File& file, gin::FileSystemWa
 	// Reload textures
 	for ( auto& txt : textures )
 		if ( ! txt->glTexture.isTarget () && name.endsWithIgnoreCase ( txt->name ) )
-			txt->load ( txt.get (), root );
+			if ( auto file = findFile ( txt->name ); file.existsAsFile () )
+				txt->load ( txt.get (), file );
 }
 //-----------------------------------------------------------------------------
 
