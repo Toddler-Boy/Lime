@@ -19,14 +19,14 @@ namespace
 
 float getZ ( const float z )
 {
-	return ( 1.0f / ( ( z + 1.1f ) / 2.0f ) ) * 0.2f;
+	return ( z + 1.1f ) / 2.0f;
 }
 
 }
 
 void CRT_DustParticles::update ( float deltaTime )
 {
-	constexpr auto	jitterStrength = 0.1f;
+	constexpr auto	jitterStrength = 1.0f;
 	constexpr auto	drag = 0.98f; // Dampens movement so it "hovers"
 
 	for ( auto& p : particles )
@@ -34,12 +34,12 @@ void CRT_DustParticles::update ( float deltaTime )
 		// Add chaotic Brownian jitter
 		p.velocity.x += ( random.nextFloat () * 2.0f - 1.0f ) * jitterStrength * deltaTime;
 		p.velocity.y += ( random.nextFloat () * 2.0f - 0.95f ) * jitterStrength * deltaTime;
-		p.velocity.z += ( random.nextFloat () * 2.0f - 1.0f ) * jitterStrength * deltaTime * 0.01f;
+		p.velocity.z += ( random.nextFloat () * 2.0f - 1.0f ) * jitterStrength * deltaTime;
 
 		p.velocity *= drag;
 
-		const auto	zPos = getZ ( p.position.z + p.velocity.z );
-		const auto	speedMultiplier = std::lerp ( 0.005f, 0.01f, zPos );
+		const auto	zPos = getZ ( std::clamp ( p.position.z + p.velocity.z, -1.0f, 1.0f ) );
+		const auto	speedMultiplier = std::lerp ( 0.00001f, 0.01f, zPos * 0.1f );
 
 		p.position.x += p.velocity.x * speedMultiplier;
 		p.position.y += p.velocity.y * speedMultiplier;
@@ -55,7 +55,7 @@ void CRT_DustParticles::update ( float deltaTime )
 		if ( p.position.z > 1.0f )			p.position.z = 1.0f;
 		else if ( p.position.z < -1.0f )	p.position.z = -1.0f;
 
-		p.alpha = zPos * 0.5f + 0.3f;
+		p.alpha = zPos;// *0.5f + 0.3f;
 	}
 }
 //-----------------------------------------------------------------------------

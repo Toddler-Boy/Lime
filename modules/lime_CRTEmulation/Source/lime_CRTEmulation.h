@@ -104,15 +104,15 @@ public:
 	void setRoot ( const juce::File& _root );
 	void updateZoom ();
 
-	const juce::StringArray& getOverlays () const	{	return overlayProfiles;	}
-	const juce::StringArray& getCRTMasks () const	{	return crtMasks;		}
+	[[ nodiscard ]] const juce::StringArray& getOverlays () const	{	return overlayProfiles;	}
+	[[ nodiscard ]] const juce::StringArray& getCRTMasks () const	{	return crtMasks;		}
 
 	void loadOverlayProfile ( const juce::String& profileName );
 	void reloadOverlayProfile ();
 	void updateOverlay ();
 
 	void setSettings ( const settings& set );
-	const settings& getSettings () const { return curSettings; }
+	[[ nodiscard ]] const settings& getSettings () const { return curSettings; }
 
 	void setBackgroundColor ( const juce::Colour bckCol );
 
@@ -126,9 +126,10 @@ public:
 
 private:
 	// this
-	bool isBezelEnabled () const;
-	bool isShadowEnabled () const;
-	bool isGlassEnabled () const;
+	[[ nodiscard ]] bool isBezelEnabled () const;
+	[[ nodiscard ]] bool isOverlayEnabled () const;
+	[[ nodiscard ]] bool isDustOrBloomEnabled () const;
+	[[ nodiscard ]] bool isGlassEnabled () const;
 
 	juce::Colour	bckCol = juce::Colours::black;
 
@@ -190,7 +191,7 @@ private:
 	//
 	// Webcam stuff
 	//
-	bool isWebcamNeeded () const;
+	[[ nodiscard ]] bool isWebcamNeeded () const;
 	void addWebcamListener ();
 	void removeWebcamListener ();
 
@@ -242,11 +243,11 @@ private:
 	//
 	// Helpers
 	//
-	bool parseOverlayProfile ( const juce::String& name );
-	juce::Rectangle<int> loadPartialTexture ( lime::shaderTexture* dst, const juce::File& root, const int expansion = 0 );
-	static juce::Rectangle<int> getCropBounds ( juce::Image& img );
-	static juce::Rectangle<int> getHoleBounds ( juce::Image& img );
-	static juce::Rectangle<float> expandHoleBounds ( const juce::Rectangle<int>& hole, const float targetRatio, const float expansionPixels );
+	[[ nodiscard ]] bool parseOverlayProfile ( const juce::String& name );
+	[[ nodiscard ]] juce::Rectangle<int> loadPartialTexture ( lime::shaderTexture* dst, const juce::File& root, const int expansion = 0 );
+	[[ nodiscard ]] static juce::Rectangle<int> getCropBounds ( juce::Image& img );
+	[[ nodiscard ]] static juce::Rectangle<int> getHoleBounds ( juce::Image& img );
+	[[ nodiscard ]] static juce::Rectangle<float> expandHoleBounds ( const juce::Rectangle<int>& hole, const float targetRatio, const float expansionPixels );
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR ( CRTEmulation )
 };

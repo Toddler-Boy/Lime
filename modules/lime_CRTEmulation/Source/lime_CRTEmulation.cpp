@@ -326,8 +326,12 @@ void CRTEmulation::renderOpenGL ()
 
 	// Update dust particles
 	{
-		const auto	overlayEnabled = curSettings.overlay && overlayTexture->isValid ();
-		if ( overlayEnabled )
+		const auto	dustVisible =		curSettings.overlay
+									&&	overlayTexture->isValid ()
+									&&	overlayDustTexture
+									&&	curSettings.overlayDust;
+
+		if ( dustVisible )
 		{
 			dustParticles.update ( deltaTime );
 
@@ -404,18 +408,24 @@ std::vector<juce::Rectangle<float>> CRTEmulation::calcRects ()
 }
 //-----------------------------------------------------------------------------
 
-bool CRTEmulation::isBezelEnabled () const
+bool CRTEmulation::isOverlayEnabled () const
 {
 	return		curSettings.overlay
-			&&	overlayTexture && overlayTexture->isValid ()
+			&&	overlayTexture && overlayTexture->isValid ();
+}
+//-----------------------------------------------------------------------------
+
+bool CRTEmulation::isBezelEnabled () const
+{
+	return		isOverlayEnabled ()
 			&&	bezelTexture && bezelTexture->isValid ();
 }
 //-----------------------------------------------------------------------------
 
-bool CRTEmulation::isShadowEnabled () const
+bool CRTEmulation::isDustOrBloomEnabled () const
 {
-	return		curSettings.overlay
-			&&	overlayTexture && overlayTexture->isValid ();
+	return		isOverlayEnabled ()
+			&&	overlayDustTexture && ( curSettings.overlayDust || curSettings.overlayBloom );
 }
 //-----------------------------------------------------------------------------
 
@@ -504,23 +514,18 @@ void CRTEmulation::reloadOverlayProfile ()
 
 void CRTEmulation::updateOverlay ()
 {
-	auto	enabled = curSettings.overlay;
+	if ( curSettings.overlay && ! ovlyProfileName.equalsIgnoreCase ( curSettings.overlayProfile ) )
+			loadOverlayProfile ( curSettings.overlayProfile );
 
-	const auto	selProfile = curSettings.overlayProfile;
-	if ( enabled && ! ovlyProfileName.equalsIgnoreCase ( selProfile ) )
-		loadOverlayProfile ( selProfile );
-
-	enabled = enabled && overlayTexture->isValid ();
+	const auto	enabled = isOverlayEnabled ();
 
 	overlayTarget->setEnabled ( enabled );
 	bezelTarget->setEnabled ( isBezelEnabled () );
 	lightTarget->setEnabled ( enabled && lightTexture->isValid () );
+	overlayDustTarget->setEnabled ( isDustOrBloomEnabled () );
 
 	// CRT Mask
-	{
-		const auto	maskFile = curSettings.crtMaskBitmap;
-		setTextureSource ( crtMaskTexture, "../CRT Masks/" + maskFile + ".png" );
-	}
+	setTextureSource ( crtMaskTexture, "../CRT Masks/" + curSettings.crtMaskBitmap + ".png" );
 
 	setSettings ( curSettings );
 	updateZoom ();
@@ -662,12 +667,14 @@ void CRTEmulation::setSettings ( const settings& set )
 	//
 	// Monitor shadows (only visible when overlays are enabled)
 	//
-	overlayTarget->setUniform_f ( "ovlShadow", isShadowEnabled () * set.overlayShadow * 0.01f * mulShadow );
+	overlayTarget->setUniform_f ( "ovlShadow", isOverlayEnabled () * set.overlayShadow * 0.01f * mulShadow );
 	overlayTarget->setUniform_f ( "ovlChromaticAberration", set.overlayChromaticAberration * 0.01f );
 	overlayTarget->setUniform_f ( "ovlGrain", set.overlayGrain * 0.01f * mulGrain );
 
 	// Overlay uniforms
 	lightTarget->setUniform_f ( "ovlBloom", set.overlayBloom * 0.01f * mulLightBloom );
+
+	overlayDustTarget->setEnabled ( isDustOrBloomEnabled () );
 	overlayDustTarget->setUniform_f ( "ovlBloom", set.overlayBloom * 0.01f * mulBloom );
 	overlayDustTarget->setUniform_f ( "ovlDust", set.overlayDust * 0.01f * mulDust );
 
