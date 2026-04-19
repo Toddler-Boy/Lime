@@ -1,6 +1,8 @@
 #include "lime_ShaderToyComponent.h"
 #include <regex>
 
+#include <chrono>
+
 namespace lime
 {
 //-----------------------------------------------------------------------------
@@ -41,6 +43,12 @@ void ShaderToyComponent::newOpenGLContextCreated ()
 	if ( targets.empty () )
 		return;
 
+	#if JUCE_WINDOWS || JUCE_LINUX
+		// Silence these chatty info messages that aren't useful for us
+		if ( juce::gl::glDebugMessageControl )
+			juce::gl::glDebugMessageControl ( juce::gl::GL_DONT_CARE, juce::gl::GL_DONT_CARE, juce::gl::GL_DEBUG_SEVERITY_NOTIFICATION, 0, nullptr, juce::gl::GL_FALSE );
+	#endif
+
 	juce::gl::glDepthRange ( 0.0, 1.0 );
 	juce::gl::glEnable ( juce::gl::GL_DEPTH_CLAMP );
 	juce::gl::glDisable ( juce::gl::GL_DEPTH_TEST );
@@ -52,11 +60,21 @@ void ShaderToyComponent::newOpenGLContextCreated ()
 
 	for ( auto& tgt : targets )
 		tgt->newContext ();
+
+	juce::gl::glGenQueries ( 2, &renderTimeQuery[ 0 ] );
+
+	for ( auto i = 0; i < std::ssize ( renderTimeQuery ); ++i )
+	{
+		juce::gl::glBeginQuery ( juce::gl::GL_TIME_ELAPSED, renderTimeQuery[ i ] );
+		juce::gl::glEndQuery ( juce::gl::GL_TIME_ELAPSED );
+	}
 }
 //-----------------------------------------------------------------------------
 
 void ShaderToyComponent::openGLContextClosing ()
 {
+	juce::gl::glDeleteQueries ( 2, &renderTimeQuery[ 0 ] );
+
 	// You should at least have one quad on the screen
 	jassert ( targets.size () != 0 );
 	if ( targets.empty () )
@@ -77,6 +95,26 @@ void ShaderToyComponent::renderOpenGL ()
 	// You should at least have one quad on the screen
 	if ( targets.empty () )
 		return;
+
+	// Get GPU time from previous frame
+	const auto	shouldMeassure = measureRenderTime.load ();
+	if ( shouldMeassure )
+	{
+		queryIndex ^= 1;
+
+		GLuint	queryReady = 0;
+		juce::gl::glGetQueryObjectuiv ( renderTimeQuery[ queryIndex ^ 1 ], juce::gl::GL_QUERY_RESULT_AVAILABLE, &queryReady );
+
+		if ( queryReady )
+		{
+			GLuint64	timeNS = 0;
+			juce::gl::glGetQueryObjectui64v ( renderTimeQuery[ queryIndex ^ 1 ], juce::gl::GL_QUERY_RESULT, &timeNS );
+			lastGpuTimeMS = timeNS / 1000000.0;
+		}
+
+		// Measure render time
+		juce::gl::glBeginQuery ( juce::gl::GL_TIME_ELAPSED, renderTimeQuery[ queryIndex ] );
+	}
 
 	// Get viewport scale, width, and height
 	auto	renderingScale = float ( openGLContext.getRenderingScale () );
@@ -105,12 +143,23 @@ void ShaderToyComponent::renderOpenGL ()
 	for ( auto& tup : targets )
 		tup.get ()->render ( viewportWidth, viewportHeight, renderingScale );
 
+	if ( shouldMeassure )
+		juce::gl::glEndQuery ( juce::gl::GL_TIME_ELAPSED );
+
 	if ( captureAddress )
 		juce::gl::glReadPixels ( 0, 0,
 								 int ( viewportWidth * renderingScale ), int ( viewportHeight * renderingScale ),
 								 juce::gl::GL_RGB, juce::gl::GL_UNSIGNED_BYTE, captureAddress );
 
 	lastFrameRendered.store ( lastFrameRequested.load () );
+
+	// Reset OpenGL state, so JUCE doesn't get confused
+	juce::gl::glUseProgram ( 0 );
+	juce::gl::glBindBuffer ( juce::gl::GL_ARRAY_BUFFER, 0 );
+	juce::gl::glBindVertexArray ( 0 );
+	juce::gl::glEnable ( juce::gl::GL_BLEND );
+	juce::gl::glBlendFunc ( juce::gl::GL_ONE, juce::gl::GL_ONE_MINUS_SRC_ALPHA );
+	juce::gl::glBindFramebuffer ( juce::gl::GL_FRAMEBUFFER, 0 );
 }
 //-----------------------------------------------------------------------------
 
@@ -542,6 +591,12 @@ void ShaderToyComponent::setCaptureAddress ( void* addr )
 	{
 		ctx.setSwapInterval ( captureAddress ? 0 : 1 );
 	}, true );
+}
+//-----------------------------------------------------------------------------
+
+void ShaderToyComponent::enableRenderTimeMeasurement ( const bool enable )
+{
+	measureRenderTime = enable;
 }
 //-----------------------------------------------------------------------------
 

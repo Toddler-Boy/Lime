@@ -52,14 +52,22 @@ public:
 	[[ nodiscard ]] bool hasFinished () const { return lastFrameRendered == lastFrameRequested; }
 
 	// Helpers
+	void enableRenderTimeMeasurement ( const bool enable );
+
 	[[ nodiscard ]] double getDeltaTime ();
+	[[ nodiscard ]] double getLastGpuTimeMS () const { return lastGpuTimeMS.load (); }
 
 	// gin::FileSystemWatcher::Listener
 	void fileChanged ( const juce::File& file, gin::FileSystemWatcher::FileSystemEvent event ) override;
 
 private:
 	// OpenGL Variables
-	GLfloat					backgroundColor[ 4 ] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	GLfloat		backgroundColor[ 4 ] = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+	std::atomic<bool>	measureRenderTime = false;
+	GLuint				renderTimeQuery[ 2 ] = { 0, 0 };
+	int					queryIndex = 0;
+	std::atomic<double>	lastGpuTimeMS = 0.0;
 
 	// Helpers
 	std::chrono::steady_clock::time_point	lastTime;
