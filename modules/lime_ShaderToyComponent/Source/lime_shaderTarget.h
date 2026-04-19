@@ -22,6 +22,7 @@ public:
 	void unlock ()	{	rmutex.unlock ();	}
 
 	void setBounds ( const juce::Rectangle<float>& r );
+	juce::Rectangle<float> getBounds () const;
 	void setBounds ( const juce::Rectangle<int>& r );
 	void setSize ( const int width, const int height );
 

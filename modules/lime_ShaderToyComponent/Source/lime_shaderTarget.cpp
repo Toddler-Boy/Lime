@@ -271,6 +271,15 @@ void shaderTarget::setBounds ( const juce::Rectangle<float>& r )
 }
 //-----------------------------------------------------------------------------
 
+juce::Rectangle<float> shaderTarget::getBounds () const
+{
+	return juce::Rectangle<float> ( vertices[ 0 ][ 0 ],
+									vertices[ 0 ][ 1 ],
+									vertices[ 1 ][ 0 ] - vertices[ 0 ][ 0 ],
+									vertices[ 2 ][ 1 ] - vertices[ 0 ][ 1 ] );
+}
+//-----------------------------------------------------------------------------
+
 void shaderTarget::setBounds ( const juce::Rectangle<int>& r )
 {
 	setBounds ( r.toFloat () );
