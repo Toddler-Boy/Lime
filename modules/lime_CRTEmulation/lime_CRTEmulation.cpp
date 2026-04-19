@@ -10,3 +10,4 @@
 #include "lime_CRTEmulation.h"
 
 #include "Source/lime_CRTEmulation.cpp"
+#include "Source/lime_CRT_DustParticles.cpp"

@@ -10,6 +10,7 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const juce::File& _root
 	, juce::Thread ( "CRTEmulation webcam thread" )
 	, res ( _res )
 	, indexBuffer ( 1, 384, 272 )
+	, dustParticles ( 200 )
 {
 	setName ( "lime::CRTEmulation" );
 	setOpaque ( true );
@@ -125,7 +126,7 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const juce::File& _root
 		dst->fromImage ( ovlImg );
 		overlayImgRect = ovlImg.getBounds ().toFloat ();
 
-		// Calculate hole in overlay (where the screen is)
+		// Find hole in overlay (where the screen is)
 		const auto	pixelHole = getHoleBounds ( ovlImg );
 		const auto	hole = expandHoleBounds ( pixelHole, res.scaledWidth * 0.937f / float ( res.scaledHeight ), 1.0f );
 
@@ -151,8 +152,8 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const juce::File& _root
 	//
 	overlayTarget = addTarget ( "overlay.glsl" );
 	overlayTarget->setTexture ( 0, overlayTexture );
-	overlayTarget->setTexture ( 2, overlayLUT_dusk );
-	overlayTarget->setTexture ( 3, overlayLUT_night );
+	overlayTarget->setTexture ( 1, overlayLUT_dusk );
+	overlayTarget->setTexture ( 2, overlayLUT_night );
 
 	//
 	// Bezel texture
@@ -209,16 +210,43 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const juce::File& _root
 	//
 	lightTexture = addTexture ( "/overlay lights", [ this ] ( lime::shaderTexture* dst, const juce::File& root )
 	{
-		lightBounds = loadPartialTexture ( dst, root ).toFloat ();
+		lightBounds = loadPartialTexture ( dst, root, 30 ).toFloat ();
 		lightTarget->setEnabled ( overlayTexture->isValid () && dst->isValid () );
 	} );
 
 	//
 	// Light shader
 	//
-	lightTarget = addTarget ( "2d-texture.glsl" );
-	lightTarget->setEnableBlend ( true, true, lime::shaderTarget::BlendMode::add );
+	lightTarget = addTarget ( "lights.glsl" );
+	lightTarget->setEnableBlend ( true, false, lime::shaderTarget::BlendMode::add );
 	lightTarget->setTexture ( 0, lightTexture );
+
+	//
+	// Dust
+	//
+	{
+		overlayDustTexture = addTexture ( "/overlay dust" );
+
+		const auto	num = dustParticles.getNumParticles ();
+		dustTargets.reserve ( num );
+
+		for ( auto i = 0; i < num; ++i )
+		{
+			auto	target = addTarget ( "overlay-dust-particle.glsl" );
+			target->setEnableBlend ( true, false, shaderTarget::BlendMode::add );
+			target->setTargetBuffer ( overlayDustTexture );
+			target->setTargetBackgroundColor ( i ? juce::Colours::transparentBlack : juce::Colours::black );
+
+			dustTargets.emplace_back ( target );
+		}
+
+		overlayDustTarget = addTarget ( "overlay-dust-layer.glsl" );
+		overlayDustTarget->setEnableBlend ( true, false, lime::shaderTarget::BlendMode::add );
+		overlayDustTarget->setTexture ( 0, overlayDustTexture );
+		overlayDustTarget->setTexture ( 1, overlayTexture );
+		overlayDustTarget->setTexture ( 2, overlayLUT_dusk );
+		overlayDustTarget->setTexture ( 3, overlayLUT_night );
+	}
 
 	//
 	// Setup camera for glass reflections
@@ -242,6 +270,7 @@ void CRTEmulation::updateZoom ()
 	if ( rects.size () > 1 )
 	{
 		overlayTarget->setBounds ( rects[ 1 ] );
+		overlayDustTarget->setBounds ( rects[ 1 ] );
 		bezelTarget->setBounds ( rects[ 2 ] );
 		lightTarget->setBounds ( rects[ 3 ] );
 	}
@@ -272,14 +301,14 @@ void CRTEmulation::renderOpenGL ()
 		const auto	factorG = float ( std::exp2 ( -( decayFactors[ 1 ] * decay ) * deltaTime ) );
 		const auto	factorB = float ( std::exp2 ( -( decayFactors[ 2 ] * decay ) * deltaTime ) );
 
-		setGlobalUniform ( "u_decayFactor", { factorR, factorG, factorB } );
+		crtTarget->setUniform_f ( "u_decayFactor", { factorR, factorG, factorB } );
 
 		// Calculate flicker visibility if decay is very high
 		constexpr auto	flickerThreshold = 0.7f;
 		constexpr auto	flickerMultiplier = 1.0f / ( 1.0f - flickerThreshold );
 
 		const auto	flicker = std::max ( crtDecay - flickerThreshold, 0.0f ) * flickerMultiplier;
-		setGlobalUniform ( "u_phosphorFlicker", std::pow ( flicker, 2.0f / 3.0f ) * 0.05f );
+		crtTarget->setUniform_f ( "u_phosphorFlicker", std::pow ( flicker, 2.0f / 3.0f ) * 0.05f );
 	}
 
 	// Set-up a ping-pong mechanism for CRT processing
@@ -293,6 +322,34 @@ void CRTEmulation::renderOpenGL ()
 		crtTarget->setTargetBuffer ( tex );
 		crtTargetProcessed->setTexture ( 0, tex );
 		bezelTarget->setTexture ( 0, tex );
+	}
+
+	// Update dust particles
+	{
+		const auto	overlayEnabled = curSettings.overlay && overlayTexture->isValid ();
+		if ( overlayEnabled )
+		{
+			dustParticles.update ( deltaTime );
+
+			const auto	scale = float ( openGLContext.getRenderingScale () );
+			const auto	db = overlayDustTarget->getBounds () * scale;
+			const auto	dbW = db.getWidth ();
+			const auto	dbH = db.getHeight ();
+
+			for ( auto i = 0; const auto& d : dustParticles.getParticles () )
+			{
+				auto&	dt = *dustTargets[ i ];
+
+				const auto	dr = dustParticles.getQuad ( d, dbW, dbH, scale );
+
+				dt.setBufferSizePixels ( int ( dbW ), int ( dbH ) );
+
+				dt.setBounds ( dr );
+				dt.setUniform_f ( "u_alpha", d.alpha );
+
+				++i;
+			}
+		}
 	}
 
 	ShaderToyComponent::renderOpenGL ();
@@ -481,11 +538,14 @@ bool CRTEmulation::parseOverlayProfile ( const juce::String& profileName )
 
 	static const	std::vector<std::pair<std::string, YamlConfig::ConfigValue>>	overlayDefaults
 	{
-		{ "multipliers/daytime",	1.0f },
-		{ "multipliers/bezel",		1.0f },
-		{ "multipliers/shadow",		1.0f },
-		{ "multipliers/reflection",	1.0f },
-		{ "multipliers/grain",		1.0f },
+		{ "multipliers/daytime",		1.0f },
+		{ "multipliers/bezel",			1.0f },
+		{ "multipliers/shadow",			1.0f },
+		{ "multipliers/reflection",		1.0f },
+		{ "multipliers/grain",			1.0f },
+		{ "multipliers/bloom",			1.0f },
+		{ "multipliers/light-bloom",	1.0f },
+		{ "multipliers/dust",			1.0f },
 
 		{ "screen/center",		YamlConfig::vec2f { 0.0f, 0.0f } },
 		{ "screen/size",		YamlConfig::vec2f { 0.0f, 0.0f } },
@@ -506,19 +566,22 @@ bool CRTEmulation::parseOverlayProfile ( const juce::String& profileName )
 	mulShadow = yml.get<float> ( "multipliers/shadow" );
 	mulReflection = yml.get<float> ( "multipliers/reflection" );
 	mulGrain = yml.get<float> ( "multipliers/grain" );
+	mulBloom = yml.get<float> ( "multipliers/bloom" );
+	mulLightBloom = yml.get<float> ( "multipliers/light-bloom" );
+	mulDust = yml.get<float> ( "multipliers/dust" );
 
 	//
 	// Bezel properties
 	//
 	{
 		const auto	radius = yml.get<int> ( "bezel/radius" );
-		setGlobalUniform ( "rflRadius", std::clamp ( radius, 2, 50 ) );
+		bezelTarget->setUniform_i ( "rflRadius", std::clamp ( radius, 2, 50 ) );
 
 		const auto [ zoomX, zoomY ] = yml.get<YamlConfig::vec2f> ( "bezel/zoom" );
-		setGlobalUniform ( "rflZoom", { zoomX, zoomY } );
+		bezelTarget->setUniform_f ( "rflZoom", { zoomX, zoomY } );
 
 		const auto [shiftX, shiftY] = yml.get<YamlConfig::vec2f> ( "bezel/shift" );
-		setGlobalUniform ( "rflShift", { shiftX * 0.1f, shiftY * 0.1f } );
+		bezelTarget->setUniform_f ( "rflShift", { shiftX * 0.1f, shiftY * 0.1f } );
 	}
 
 	//
@@ -526,10 +589,10 @@ bool CRTEmulation::parseOverlayProfile ( const juce::String& profileName )
 	//
 	{
 		const auto [ shiftX, shiftY ] = yml.get<YamlConfig::vec2f> ( "shadow/offset" );
-		setGlobalUniform ( "ovlShadowOffset", { shiftX * 0.1f, shiftY * 0.1f } );
+		overlayTarget->setUniform_f ( "ovlShadowOffset", { shiftX * 0.1f, shiftY * 0.1f } );
 
 		const auto	blur = yml.get<float> ( "shadow/blur" );
-		setGlobalUniform ( "ovlShadowBlur", blur );
+		overlayTarget->setUniform_f ( "ovlShadowBlur", blur );
 	}
 
 	setSettings ( curSettings );
@@ -599,18 +662,26 @@ void CRTEmulation::setSettings ( const settings& set )
 	//
 	// Monitor shadows (only visible when overlays are enabled)
 	//
-	setGlobalUniform ( "ovlShadow", isShadowEnabled () * set.overlayShadow * 0.01f * mulShadow );
+	overlayTarget->setUniform_f ( "ovlShadow", isShadowEnabled () * set.overlayShadow * 0.01f * mulShadow );
+	overlayTarget->setUniform_f ( "ovlChromaticAberration", set.overlayChromaticAberration * 0.01f );
+	overlayTarget->setUniform_f ( "ovlGrain", set.overlayGrain * 0.01f * mulGrain );
 
 	// Overlay uniforms
-	setGlobalUniform ( "ovlDust", set.overlayDust * 0.01f );
-	setGlobalUniform ( "ovlChromaticAberration", set.overlayChromaticAberration * 0.01f );
-	setGlobalUniform ( "ovlGrain", set.overlayGrain * 0.01f * mulGrain );
+	lightTarget->setUniform_f ( "ovlBloom", set.overlayBloom * 0.01f * mulLightBloom );
+	overlayDustTarget->setUniform_f ( "ovlBloom", set.overlayBloom * 0.01f * mulBloom );
+	overlayDustTarget->setUniform_f ( "ovlDust", set.overlayDust * 0.01f * mulDust );
 
 	// Daytime LUT blending (for day -> dusk -> night transition)
-	setGlobalUniform ( "lutBlend", set.overlayDaytime * 0.01f * mulDaytime );
+	{
+		const auto	lutBlend = set.overlayDaytime * 0.01f * mulDaytime;
+
+		overlayTarget->setUniform_f ( "lutBlend", lutBlend );
+		bezelTarget->setUniform_f ( "lutBlend", lutBlend );
+		overlayDustTarget->setUniform_f ( "lutBlend", lutBlend );
+	}
 
 	// Index to YUV/YIQ encoder
-	setGlobalUniform ( "decJailbars", set.encJailbars * 0.01f );
+	indexTarget->setUniform_f ( "decJailbars", set.encJailbars * 0.01f );
 
 	// Signal decoder
 	{
@@ -619,7 +690,7 @@ void CRTEmulation::setSettings ( const settings& set )
 		const auto	contrast = std::lerp ( 0.4f, 1.2f, set.contrast * 0.01f );
 		const auto	saturation = std::lerp ( 0.0f, 0.8f, ( set.saturation + ( set.isNTSC ? 0.0f : 5.0f ) ) * 0.01f );
 
-		setGlobalUniform ( "encBrightnessContrastSaturation", { brightness, contrast, saturation } );
+		lumaChromaTarget->setUniform_f ( "encBrightnessContrastSaturation", { brightness, contrast, saturation } );
 	}
 
 	//
@@ -629,31 +700,28 @@ void CRTEmulation::setSettings ( const settings& set )
 		const auto	over = std::lerp ( 1.0f, 0.86f, set.overscan * 0.01f );
 		const auto	yOver = over * ( set.isNTSC == false ? 1.0f : 0.8825f );
 
-		setGlobalUniform ( "crtOverscan", { over, yOver } );
+		crtTarget->setUniform_f ( "crtOverscan", { over, yOver } );
 	}
 
 	//
 	// CRT emulation uniforms
 	//
 	{
-		setGlobalUniform ( "decSharpening", set.decSharpening * 0.01f );
-		setGlobalUniform ( "decLumablur", set.decLumaBlur * 0.01f );
-		setGlobalUniform ( "decChromablur", set.decChromaBlur * 0.01f );
+		lumaChromaTarget->setUniform_f ( "decSharpening", set.decSharpening * 0.01f );
+		lumaChromaTarget->setUniform_f ( "decLumablur", set.decLumaBlur * 0.01f );
+		lumaChromaTarget->setUniform_f ( "decChromablur", set.decChromaBlur * 0.01f );
 
-		setGlobalUniform ( "decInterference", set.decInterference * 0.01f );
-		setGlobalUniform ( "decCrosstalk", set.decCrosstalk * 0.01f );
-		setGlobalUniform ( "decSubcarrier", set.decSubcarrier * 0.01f );
-		setGlobalUniform ( "decNoise", set.decNoise * 0.01f );
-
-		// Curve
-		setGlobalUniform ( "crtCurve", set.crtCurve * 0.01f );
+		lumaChromaTarget->setUniform_f ( "decInterference", set.decInterference * 0.01f );
+		lumaChromaTarget->setUniform_f ( "decCrosstalk", set.decCrosstalk * 0.01f );
+		lumaChromaTarget->setUniform_f ( "decSubcarrier", set.decSubcarrier * 0.01f );
+		lumaChromaTarget->setUniform_f ( "decNoise", set.decNoise * 0.01f );
 
 		// Bleed
 		{
-			setGlobalUniform ( "crtBleed", set.crtBleed * 0.01f );
+			crtTarget->setUniform_f ( "crtBleed", set.crtBleed * 0.01f );
 			auto setUni_vec2 = [ this ] ( const char* uniName, const std::pair<int8_t, int8_t>& value )
 			{
-				setGlobalUniform ( uniName, { value.first * 0.01f, value.second * 0.01f } );
+				crtTarget->setUniform_f ( uniName, { value.first * 0.01f, value.second * 0.01f } );
 			};
 
 			setUni_vec2 ( "crtRedOffset", set.crtBleedRed );
@@ -662,25 +730,28 @@ void CRTEmulation::setSettings ( const settings& set )
 		}
 
 		// H-wave
-		setGlobalUniform ( "crtHoffset", set.crtHwave * 0.01f );
+		crtTarget->setUniform_f ( "crtHoffset", set.crtHwave * 0.01f );
 
 		// Scanlines
-		setGlobalUniform ( "crtScanlines", set.crtScanlines * 0.01f );
+		crtTarget->setUniform_f ( "crtScanlines", set.crtScanlines * 0.01f );
 
 		// Shadowmask
-		setGlobalUniform ( "crtMask", set.crtMask * 0.01f );
+		crtTarget->setUniform_f ( "crtMask", set.crtMask * 0.01f );
 
 		// Glow
-		setGlobalUniform ( "crtGlow", set.crtGlow * 0.01f );
+		crtTarget->setUniform_f ( "crtGlow", set.crtGlow * 0.01f );
 
 		// Ambient
-		setGlobalUniform ( "crtAmbient", set.crtAmbient * 0.01f );
+		crtTarget->setUniform_f ( "crtAmbient", set.crtAmbient * 0.01f );
 
 		// Phosphor Decay
-		setGlobalUniform ( "crtRefreshRate", set.isNTSC ? 59.826f : 50.125f );
-		setGlobalUniform ( "crtPhosphorDecay", set.crtPhosphorDecay * 0.01f );
+		crtTarget->setUniform_f ( "crtRefreshRate", set.isNTSC ? 59.826f : 50.125f );
+
+		// Curve
+		crtTargetProcessed->setUniform_f ( "crtCurve", set.crtCurve * 0.01f );
+
 		// Vignette
-		setGlobalUniform ( "crtVignette", set.crtVignette * 0.01f );
+		crtTargetProcessed->setUniform_f ( "crtVignette", set.crtVignette * 0.01f );
 
 		// Webcam stuff
 		{
@@ -710,7 +781,7 @@ void CRTEmulation::setSettings ( const settings& set )
 	//
 	{
 		const auto	value = set.overlayBezel * 0.01f * mulBezel;
-		setGlobalUniform ( "rflLevel", value );
+		bezelTarget->setUniform_f ( "rflLevel", value );
 		bezelTarget->setEnabled ( isBezelEnabled () && value > 0.0f );
 	}
 }
@@ -752,7 +823,7 @@ void CRTEmulation::setBackgroundColor ( const juce::Colour _bckCol )
 
 	crtTargetProcessed->setTextureBorderColor ( 0, bckCol );
 	crtTargetProcessed->setTargetBackgroundColor ( bckCol );
-	setGlobalUniform ( "backCol", { bckCol.getFloatRed (), bckCol.getFloatGreen (), bckCol.getFloatBlue () } );
+	crtTargetProcessed->setUniform_f ( "backCol", { bckCol.getFloatRed (), bckCol.getFloatGreen (), bckCol.getFloatBlue () } );
 }
 //-----------------------------------------------------------------------------
 
@@ -785,14 +856,17 @@ void CRTEmulation::setLumaChromaPalette ( const std::span<float>& palette )
 }
 //-----------------------------------------------------------------------------
 
-juce::Rectangle<int> CRTEmulation::loadPartialTexture ( lime::shaderTexture* dst, const juce::File& root )
+juce::Rectangle<int> CRTEmulation::loadPartialTexture ( lime::shaderTexture* dst, const juce::File& root, const int expansion )
 {
 	if ( ! overlayTexture->isValid () )
 		return {};
 
 	if ( auto rfl = juce::SoftwareImageType ().convert ( juce::ImageFileFormat::loadFrom ( root ) ); rfl.isARGB () )
 	{
-		auto	edgeRect = getCropBounds ( rfl );
+		auto	edgeRect = getCropBounds ( rfl ).expanded ( expansion, expansion );
+
+		// Keep the edge rectangle within the bounds of the image
+		rfl.getBounds ().intersectRectangle ( edgeRect );
 
 		dst->fromImage ( rfl.getClippedImage ( edgeRect ) );
 

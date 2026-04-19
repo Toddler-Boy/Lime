@@ -2,6 +2,8 @@
 
 #include <chrono>
 
+#include "lime_CRT_DustParticles.h"
+
 //-----------------------------------------------------------------------------
 
 namespace lime
@@ -31,6 +33,7 @@ public:
 		int8_t			overlayShadow = 80;
 		int8_t			overlayZoom = 0;
 		int8_t			overlayDust = 50;
+		int8_t			overlayBloom = 50;
 		int8_t			overlayChromaticAberration = 50;
 		int8_t			overlayGrain = 50;
 
@@ -181,6 +184,9 @@ private:
 	shaderTexture*	lightTexture;
 	juce::Rectangle<float>	lightBounds;
 
+	shaderTarget*	overlayDustTarget;
+	shaderTexture*	overlayDustTexture;
+
 	//
 	// Webcam stuff
 	//
@@ -193,6 +199,9 @@ private:
 	float	mulBezel = 1.0f;
 	float	mulShadow = 1.0f;
 	float	mulReflection = 1.0f;
+	float	mulDust = 1.0f;
+	float	mulBloom = 1.0f;
+	float	mulLightBloom = 1.0f;
 	float	mulGrain = 1.0f;
 
 	// juce::Thread (used for webcam)
@@ -225,10 +234,16 @@ private:
 	juce::StringArray	crtMasks;
 
 	//
+	// Dust particles
+	//
+	CRT_DustParticles			dustParticles;
+	std::vector<shaderTarget*>	dustTargets;
+
+	//
 	// Helpers
 	//
 	bool parseOverlayProfile ( const juce::String& name );
-	juce::Rectangle<int> loadPartialTexture ( lime::shaderTexture* dst, const juce::File& root );
+	juce::Rectangle<int> loadPartialTexture ( lime::shaderTexture* dst, const juce::File& root, const int expansion = 0 );
 	static juce::Rectangle<int> getCropBounds ( juce::Image& img );
 	static juce::Rectangle<int> getHoleBounds ( juce::Image& img );
 	static juce::Rectangle<float> expandHoleBounds ( const juce::Rectangle<int>& hole, const float targetRatio, const float expansionPixels );
