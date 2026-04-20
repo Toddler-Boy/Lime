@@ -39,7 +39,7 @@ void CRT_DustParticles::update ( float deltaTime )
 		p.velocity *= drag;
 
 		const auto	zPos = getZ ( std::clamp ( p.position.z + p.velocity.z, -1.0f, 1.0f ) );
-		const auto	speedMultiplier = std::lerp ( 0.00001f, 0.01f, zPos * 0.1f );
+		const auto	speedMultiplier = std::lerp ( 0.00001f, 0.01f, zPos * 0.5f );
 
 		p.position.x += p.velocity.x * speedMultiplier;
 		p.position.y += p.velocity.y * speedMultiplier;
@@ -62,7 +62,7 @@ void CRT_DustParticles::update ( float deltaTime )
 
 juce::Rectangle<float> CRT_DustParticles::getQuad ( const DustParticle& p, const float width, const float height, const float scale ) const
 {
-	const auto	visualSize = scale * 1.25f;
+	const auto	visualSize = scale * 5.0f;
 
 	return juce::Rectangle<float> ( p.position.x * width - visualSize * 0.5f,
 									p.position.y * height - visualSize * 0.5f,
