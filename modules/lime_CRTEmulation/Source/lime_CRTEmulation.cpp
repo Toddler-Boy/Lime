@@ -865,7 +865,7 @@ void CRTEmulation::setIndexTextureSource ( const openGL_Image& img )
 void CRTEmulation::setLumaChromaPalette ( const std::span<float>& palette )
 {
 	constexpr auto	channels = 3;	// YUV or YIQ
-	constexpr auto	height = 3;	// three palettes stacked vertically in one texture (2x YUV + 1x YIQ)
+	constexpr auto	height = 3;		// three palettes stacked vertically in one texture (2x YUV + 1x YIQ)
 	const auto	width = int ( palette.size () / height );
 
 	indexTarget->lock ();
@@ -1000,7 +1000,11 @@ void CRTEmulation::run ()
 	do
 	{
 		if ( isShowing () && isWebcamNeeded () )
+		{
 			addWebcamListener ();
+			if ( ! camera )
+				return;
+		}
 		else
 			removeWebcamListener ();
 
@@ -1073,7 +1077,7 @@ void CRTEmulation::addWebcamListener ()
 		};
 	}
 
-	if ( isCamInUse || !camera )
+	if ( isCamInUse || ! camera )
 		return;
 
 	isCamInUse = true;
