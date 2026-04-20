@@ -356,6 +356,35 @@ void CRTEmulation::renderOpenGL ()
 		}
 	}
 
+	// Framerate-independent LERP
+	auto fiLerp = [] ( const float source, const float target, const float speed, const float deltaTime )
+	{
+		if ( juce::approximatelyEqual ( source, target ) )
+			return target;
+
+		return target + ( source - target ) * std::pow ( 1.0f - speed, deltaTime );
+	};
+
+	// Update zoom
+	{
+		const auto	oldZoom = currentZoom;
+		currentZoom = fiLerp ( currentZoom, curSettings.overlayZoom * 0.01f, 0.99999f, deltaTime );
+
+		if ( ! juce::approximatelyEqual ( oldZoom, currentZoom ) )
+			updateZoom ();
+	}
+
+	// Update overscan
+	{
+		const auto	oldOverscan = currentOverscan;
+		const auto	over = std::lerp ( 1.0f, 0.86f, curSettings.overscan * 0.01f );
+		currentOverscan = fiLerp ( currentOverscan, over, 0.99999f, deltaTime );
+
+		const auto	yOver = currentOverscan * ( curSettings.isNTSC == false ? 1.0f : 0.8825f );
+
+		crtTarget->setUniform_f ( "crtOverscan", { currentOverscan, yOver } );
+	}
+
 	ShaderToyComponent::renderOpenGL ();
 }
 //-----------------------------------------------------------------------------
@@ -397,7 +426,7 @@ std::vector<juce::Rectangle<float>> CRTEmulation::calcRects ()
 										std::lerp ( ta.mat12, tb.mat12, t ) };
 	};
 
-	const auto	finalTrans = lerpTransfrom ( zoTrans, ziTrans, zoom );
+	const auto	finalTrans = lerpTransfrom ( zoTrans, ziTrans, currentZoom );
 
 	return {
 		tubeRect.transformedBy ( finalTrans ),
@@ -698,16 +727,6 @@ void CRTEmulation::setSettings ( const settings& set )
 		const auto	saturation = std::lerp ( 0.0f, 0.8f, ( set.saturation + ( set.isNTSC ? 0.0f : 5.0f ) ) * 0.01f );
 
 		lumaChromaTarget->setUniform_f ( "encBrightnessContrastSaturation", { brightness, contrast, saturation } );
-	}
-
-	//
-	// TV Overscan
-	//
-	{
-		const auto	over = std::lerp ( 1.0f, 0.86f, set.overscan * 0.01f );
-		const auto	yOver = over * ( set.isNTSC == false ? 1.0f : 0.8825f );
-
-		crtTarget->setUniform_f ( "crtOverscan", { over, yOver } );
 	}
 
 	//

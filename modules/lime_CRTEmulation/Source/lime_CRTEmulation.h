@@ -141,6 +141,8 @@ private:
 	std::vector<juce::Rectangle<float>> calcRects ();
 
 	settings		curSettings;
+	float			currentZoom = 0.0f;
+	float			currentOverscan = 0.0f;
 
 	// Webcam raw-data NV12 (Windows & macOS)
 	openGL_Image	camImageNV12_Y { 1, 1920, 1080 };
