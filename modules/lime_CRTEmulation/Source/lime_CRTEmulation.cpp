@@ -376,7 +376,6 @@ void CRTEmulation::renderOpenGL ()
 
 	// Update overscan
 	{
-		const auto	oldOverscan = currentOverscan;
 		const auto	over = std::lerp ( 1.0f, 0.86f, curSettings.overscan * 0.01f );
 		currentOverscan = fiLerp ( currentOverscan, over, 0.99999f, deltaTime );
 
@@ -413,8 +412,6 @@ std::vector<juce::Rectangle<float>> CRTEmulation::calcRects ()
 
 	const auto	zoTrans = rp.getTransformToFit ( overlayImgRect, b );
 	const auto	ziTrans = rp.getTransformToFit ( crtRect, b );
-
-	const auto	zoom = curSettings.overlayZoom * 0.01f;
 
 	auto lerpTransfrom = [] ( const juce::AffineTransform& ta, const juce::AffineTransform& tb, const float t )
 	{
