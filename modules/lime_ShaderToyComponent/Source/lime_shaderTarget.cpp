@@ -26,6 +26,7 @@ void shaderTarget::losingContext ()
 		targetBuffer->glTexture.release ();
 
 	glQuad.release ();
+
 	shaderProgram.reset ();
 }
 //-----------------------------------------------------------------------------
@@ -50,6 +51,9 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 			case autoSizeModes::pixels:
 				scaleW = 1.0;
 				scaleH = 1.0;
+				break;
+
+			case autoSizeModes::pixelsScaled:
 				break;
 
 			case autoSizeModes::relative:
@@ -177,7 +181,7 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 	if ( shaderUpdated )
 	{
 		rmutex.lock ();
-		compileOpenGLShaderProgram ();
+		compileOpenGLShaders ();
 		rmutex.unlock ();
 
 		resetUniforms ();
@@ -192,6 +196,7 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 	updateUniforms ();
 
 	// Send updated vertices
+	if ( instanceData.empty () )
 	{
 		vertexBuffer = {
 			vertices[ 2 ][ 0 ] * scaleW, vertices[ 2 ][ 1 ] * scaleH, vertices[ 2 ][ 2 ], vertices[ 2 ][ 3 ],	0.0f, 0.0f,
@@ -201,6 +206,10 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 		};
 
 		glQuad.setVertices ( vertexBuffer );
+	}
+	else
+	{
+		glQuad.setInstances ( instanceData, instanceStride );
 	}
 
 	//
@@ -340,23 +349,41 @@ void shaderTarget::setBufferSizePixels ( const int w, const int h )
 }
 //-----------------------------------------------------------------------------
 
+void shaderTarget::setBufferSizePixelsScaled ( const int w, const int h )
+{
+	sizeMode = autoSizeModes::pixelsScaled;
+
+	pixWidth = w;
+	pixHeight = h;
+}
+//-----------------------------------------------------------------------------
+
 void shaderTarget::setName ( const juce::String& _name )
 {
 	name = _name;
 }
 //-----------------------------------------------------------------------------
 
-void shaderTarget::setShaderProgram ( const juce::String& prgStr )
+void shaderTarget::setVertexShader ( const juce::String& shaderStr )
 {
-	if ( prgStr.isEmpty () )
-		return;
+	setShader ( vertexShaderProgramStr, shaderStr );
+}
+//-----------------------------------------------------------------------------
 
-	const auto	newPrg = prgStr.trim ().toStdString ();
-	if ( newPrg == shaderProgramStr )
+void shaderTarget::setFragmentShader ( const juce::String& shaderStr )
+{
+	setShader ( fragmentShaderProgramStr, shaderStr );
+}
+//-----------------------------------------------------------------------------
+
+void shaderTarget::setShader ( std::string& dst, const juce::String& shaderStr )
+{
+	const auto	newPrg = shaderStr.trim ().toStdString ();
+	if ( newPrg == dst )
 		return;
 
 	rmutex.lock ();
-	shaderProgramStr = std::move ( newPrg );
+	dst = std::move ( newPrg );
 	shaderUpdated = true;
 	rmutex.unlock ();
 }
@@ -409,15 +436,10 @@ void shaderTarget::setTextureClampMode ( const int index, const int mode )
 }
 //-----------------------------------------------------------------------------
 
-void shaderTarget::compileOpenGLShaderProgram ()
+namespace defaultShaderStrings
 {
-	if ( shaderProgramStr.empty () )
-	{
-		shaderUpdated = false;
-		return;
-	}
 
-	const static std::string	vertexShader = R"(
+const static std::string	vertexShader = R"(
 #version 410 core
 
 uniform vec3		iResolution;				// viewport resolution (in pixels)
@@ -437,7 +459,7 @@ void main ()
 }
 )";
 
-	std::string	fragmentPrefix = R"(
+const static std::string	fragmentPrefix = R"(
 #version 410 core
 
 precision highp float;
@@ -454,52 +476,68 @@ uniform float		iTime;						// shader playback time (in seconds)
 uniform int			iFrame;						// shader playback frame
 )";
 
-	for ( auto index = 0; const auto& tex : textures )
+}
+
+void shaderTarget::compileOpenGLShaders ()
+{
+	if ( fragmentShaderProgramStr.empty () )
 	{
-		const auto	channelName = std::string ( "iChannel" ) + std::to_string ( index );
+		shaderUpdated = false;
+		return;
+	}
 
-		if ( auto texture = tex.tex )
+	auto	fragmentPrefix = std::string ();
+	if ( ! fragmentShaderProgramStr.starts_with ( '#' ) )
+	{
+		fragmentPrefix = defaultShaderStrings::fragmentPrefix;
+
+		for ( auto index = 0; const auto& tex : textures )
 		{
-			fragmentPrefix += "uniform ";
-			fragmentPrefix += std::visit ( [ & ] ( auto&& arg ) -> std::string
+			const auto	channelName = std::string ( "iChannel" ) + std::to_string ( index );
+
+			if ( auto texture = tex.tex )
 			{
-				using T = std::decay_t<decltype( arg )>;
-
-				if constexpr ( std::is_same_v<T, openGL_Image> )
+				fragmentPrefix += "uniform ";
+				fragmentPrefix += std::visit ( [ & ] ( auto&& arg ) -> std::string
 				{
-					if ( arg.isValid () && texture->isUint )
-						return "usampler2D";
-				}
-				else if constexpr ( std::is_same_v<T, juce::Image> )
-				{
-					if ( arg.isValid () && arg.isSingleChannel () && texture->isUint )
-						return "usampler2D";
-				}
+					using T = std::decay_t<decltype( arg )>;
 
-				if ( texture->is3DLUT )
-					return "sampler3D";
+					if constexpr ( std::is_same_v<T, openGL_Image> )
+					{
+						if ( arg.isValid () && texture->isUint )
+							return "usampler2D";
+					}
+					else if constexpr ( std::is_same_v<T, juce::Image> )
+					{
+						if ( arg.isValid () && arg.isSingleChannel () && texture->isUint )
+							return "usampler2D";
+					}
 
-				return "sampler2D";
+					if ( texture->is3DLUT )
+						return "sampler3D";
 
-			}, texture->source );
+					return "sampler2D";
 
-			fragmentPrefix += " " + channelName + ";\n";
+				}, texture->source );
 
-			setUniform_i ( channelName, index );
+				fragmentPrefix += " " + channelName + ";\n";
+
+				setUniform_i ( channelName, index );
+			}
+			else
+			{
+				removeUniform ( channelName );
+			}
+
+			++index;
 		}
-		else
-		{
-			removeUniform ( channelName );
-		}
-
-		++index;
 	}
 
 	auto	shaderProgramAttempt = std::make_unique<juce::OpenGLShaderProgram> ( openGLContext );
 
 	// Attempt to compile the program
-	shaderProgramAttempt->addVertexShader ( vertexShader );
-	shaderProgramAttempt->addFragmentShader ( fragmentPrefix + shaderProgramStr );
+	shaderProgramAttempt->addVertexShader ( vertexShaderProgramStr.empty () ? defaultShaderStrings::vertexShader : vertexShaderProgramStr );
+	shaderProgramAttempt->addFragmentShader ( fragmentPrefix + fragmentShaderProgramStr );
 	shaderProgramAttempt->link ();
 
 	openGLStatus = shaderProgramAttempt->getLastError ();
@@ -511,7 +549,7 @@ uniform int			iFrame;						// shader playback frame
 		// Find the line mention in the error message and print the shader code around it for easier debugging
 		const auto	errorLine = openGLStatus.fromFirstOccurrenceOf ( "(", false, false ).upToFirstOccurrenceOf ( ")", false, false ).getIntValue () - 1;
 
-		auto	shaderLines = juce::StringArray::fromLines ( fragmentPrefix + shaderProgramStr );
+		auto	shaderLines = juce::StringArray::fromLines ( fragmentPrefix + fragmentShaderProgramStr );
 
 		// Print 5 lines before and after the error line
 		for ( auto i = std::max ( 0, errorLine - 5 ); i < std::min ( shaderLines.size (), errorLine + 6 ); ++i )

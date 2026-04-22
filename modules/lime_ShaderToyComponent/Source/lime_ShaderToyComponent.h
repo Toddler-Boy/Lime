@@ -102,7 +102,7 @@ private:
 	//
 	// Helpers
 	//
-	juce::String loadFragmentShader ( juce::String name );
+	juce::String loadShader ( juce::String name );
 };
 //-----------------------------------------------------------------------------
 }

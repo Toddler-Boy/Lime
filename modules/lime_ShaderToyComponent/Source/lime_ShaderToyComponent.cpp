@@ -194,7 +194,10 @@ void ShaderToyComponent::setRoot ( const juce::File& _root, const juce::File& _l
 
 	// (Re)load all shaders
 	for ( auto& dst : targets )
-		dst->setShaderProgram ( loadFragmentShader ( dst->getName () ) );
+	{
+		dst->setFragmentShader ( loadShader ( dst->getName () ) );
+		dst->setVertexShader ( loadShader ( dst->getName ().replace ( ".glsl", ".vert" ) ) );
+	}
 
 	// (Re)load all textures
 	for ( auto& dst : textures )
@@ -512,7 +515,8 @@ void ShaderToyComponent::setTargetShader ( shaderTarget* dst, const juce::String
 	jassert ( name.isNotEmpty () );
 
 	dst->setName ( name );
-	dst->setShaderProgram ( loadFragmentShader ( name ) );
+	dst->setFragmentShader ( loadShader ( name ) );
+	dst->setVertexShader ( loadShader ( name.replace ( ".glsl", ".vert" ) ) );
 }
 //-----------------------------------------------------------------------------
 
@@ -630,11 +634,11 @@ void ShaderToyComponent::fileChanged ( const juce::File& file, gin::FileSystemWa
 
 	const auto	name = file.getFullPathName ().replaceCharacter ( '\\', '/' );
 
-	// recompile ALL shaders, if their common-file has changed
+	// recompile ALL fragment-shaders, if their common-file has changed
 	if ( name.endsWithIgnoreCase ( "/common.glsl" ) )
 	{
 		for ( auto& shader : targets )
-			shader->setShaderProgram ( loadFragmentShader ( shader->getName () ) );
+			shader->setFragmentShader ( loadShader ( shader->getName () ) );
 
 		return;
 	}
@@ -642,7 +646,9 @@ void ShaderToyComponent::fileChanged ( const juce::File& file, gin::FileSystemWa
 	// Recompile shaders
 	for ( auto& dst : targets )
 		if ( name.endsWithIgnoreCase ( dst->getName () ) )
-			dst->setShaderProgram ( loadFragmentShader ( file.getFileName () ) );
+			dst->setFragmentShader ( loadShader ( file.getFileName () ) );
+		else if ( name.endsWithIgnoreCase ( dst->getName ().replace ( ".glsl", ".vert" ) ) )
+			dst->setVertexShader ( loadShader ( file.getFileName () ) );
 
 	// Reload textures
 	for ( auto& txt : textures )
@@ -662,7 +668,7 @@ juce::File ShaderToyComponent::findFile ( const juce::String& name )
 
 	if ( root != juce::File () )
 	{
-		if ( name.endsWithIgnoreCase ( ".glsl" ) )
+		if ( name.endsWithIgnoreCase ( ".glsl" ) || name.endsWithIgnoreCase ( ".vert" ) )
 		{
 			if ( file = root.getChildFile ( shaderFolderName + "/" + name ); file.existsAsFile () )
 				return file;
@@ -678,24 +684,28 @@ juce::File ShaderToyComponent::findFile ( const juce::String& name )
 }
 //-----------------------------------------------------------------------------
 
-juce::String ShaderToyComponent::loadFragmentShader ( juce::String name )
+juce::String ShaderToyComponent::loadShader ( juce::String name )
 {
-	if ( ! name.endsWithIgnoreCase ( ".glsl" ) )
+	if ( ! ( name.endsWithIgnoreCase ( ".glsl" ) || name.endsWithIgnoreCase ( ".vert" ) ) )
 		return {};
 
 	if ( name.startsWithChar ( '/' ) )
 		name = name.substring ( 1 );
 
 	auto	shaderStr = findFile ( name ).loadFileAsString ();
-	if ( shaderStr.isEmpty () )
+	if ( shaderStr.isEmpty () && name.endsWithIgnoreCase ( ".glsl" ) )
 	{
 		juce::Logger::writeToLog ( "[E]Can't find shader named " + name.quoted () );
 		return {};
 	}
 
+	if ( shaderStr.containsIgnoreCase ( "#version" ) )
+		return shaderStr;
+
 	// Check for common-file
-	if ( auto commonStr = findFile ( "common.glsl" ).loadFileAsString (); commonStr.isNotEmpty () )
-		return commonStr + "\n" + shaderStr;
+	if ( name.endsWithIgnoreCase ( ".glsl" ) )
+		if ( auto commonStr = findFile ( "common.glsl" ).loadFileAsString (); commonStr.isNotEmpty () )
+			return commonStr + "\n" + shaderStr;
 
 	return shaderStr;
 }

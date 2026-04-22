@@ -28,6 +28,18 @@ public:
 
 	void setVertices ( const std::array<std::array<float, 4>, 4>& v );
 
+	template <typename T>
+	void setInstances ( std::span<const T> data )
+	{
+		static_assert ( std::is_standard_layout_v<T>, "Instance struct must be POD" );
+
+		// Capture the raw float data and how many floats per struct
+		instanceData = { reinterpret_cast<const float*> ( data.data () ), data.size_bytes () / sizeof ( float ) };
+		instanceStride = sizeof ( T ) / sizeof ( float );
+
+		glQuad.setInstances ( instanceData, instanceStride );
+	}
+
 	void setName ( const juce::String& name );
 	juce::String& getName () { return name; }
 
@@ -39,7 +51,8 @@ public:
 	void setMeasurePerformance ( const bool _enabled ) { measurePerformance = _enabled; }
 	float getMeasuredTimeMs () const { return glQuad.getElapsedTimeMs (); }
 
-	void setShaderProgram ( const juce::String& prgStr );
+	void setVertexShader ( const juce::String& shaderStr );
+	void setFragmentShader ( const juce::String& shaderStr );
 
 	enum BlendMode
 	{
@@ -74,6 +87,7 @@ public:
 	void setTargetBackgroundColor ( juce::Colour col );
 
 	void setBufferSizePixels ( const int w, const int h );
+	void setBufferSizePixelsScaled ( const int w, const int h );
 	void setBufferSizeRelative ( const float s );
 	void setBufferSizeRelative ( const float sw, const float sh );
 	void setBufferSizeSquareRelative ( const float s );
@@ -102,6 +116,12 @@ private:
 	std::array<openGL_Quad::vertex, 4>	vertexBuffer {};
 
 	//
+	// Instance data
+	//
+	std::span<const float>	instanceData;
+	int						instanceStride = 0;
+
+	//
 	// Textures
 	//
 	struct shaderTextureMeta
@@ -113,18 +133,21 @@ private:
 		GLint	clampMode = juce::gl::GL_CLAMP_TO_EDGE;
 	};
 
-	static inline constexpr auto	maxTextures = 16;
+	static constexpr auto	maxTextures = 16;
 	std::array<shaderTextureMeta, maxTextures>	textures {};
 
 	//
-	// Shader
+	// Shaders
 	//
-	void compileOpenGLShaderProgram ();
+	void compileOpenGLShaders ();
 	juce::String	openGLStatus;
+
+	void setShader ( std::string& dst, const juce::String& shaderStr );
 
 	std::recursive_mutex	rmutex;
 	std::atomic<bool>		shaderUpdated = false;
-	std::string									shaderProgramStr;
+	std::string				vertexShaderProgramStr;
+	std::string				fragmentShaderProgramStr;
 	std::unique_ptr<juce::OpenGLShaderProgram>	shaderProgram;
 
 	//
@@ -161,6 +184,7 @@ private:
 	{
 		none = 0,
 		pixels,
+		pixelsScaled,
 		relative,
 		relativeSmaller,
 	};
