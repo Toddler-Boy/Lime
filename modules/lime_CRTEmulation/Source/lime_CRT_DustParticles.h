@@ -17,24 +17,28 @@ public:
 	{
 		juce::Vector3D<float> position;
 		juce::Vector3D<float> velocity;
-		float	size;				// Base pixel size
 		float	alpha;				// Calculated based on depth
-		float	targetAlpha;
+	};
+
+	struct renderParticles
+	{
+		float	x;
+		float	y;
+		float	alpha;
 	};
 
 	CRT_DustParticles ( int numParticles );
 
 	void update ( float deltaTime );
-	juce::Rectangle<float> getQuad ( const DustParticle& p, const float width, const float height, const float scale ) const;
 
-	const std::vector<DustParticle>& getParticles () const { return particles; }
-	int getNumParticles () const { return int ( particles.size () ); }
+	std::vector<renderParticles>& getParticles ();
 
 private:
 	void resetParticle ( DustParticle& p );
 
-	std::vector<DustParticle>	particles;
-	juce::Random				random;
+	std::vector<DustParticle>		particles;
+	std::vector<renderParticles>	renderData;
+	juce::Random					random;
 };
 
 } // namespace lime

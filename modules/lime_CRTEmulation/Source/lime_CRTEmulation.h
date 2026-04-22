@@ -239,8 +239,8 @@ private:
 	//
 	// Dust particles
 	//
-	CRT_DustParticles			dustParticles;
-	std::vector<shaderTarget*>	dustTargets;
+	CRT_DustParticles	dustParticles;
+	shaderTarget*		dustTarget;
 
 	//
 	// Helpers

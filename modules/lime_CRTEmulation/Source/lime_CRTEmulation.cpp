@@ -227,18 +227,11 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const juce::File& _root
 	{
 		overlayDustTexture = addTexture ( "/overlay dust" );
 
-		const auto	num = dustParticles.getNumParticles ();
-		dustTargets.reserve ( num );
-
-		for ( auto i = 0; i < num; ++i )
-		{
-			auto	target = addTarget ( "overlay-dust-particle.glsl" );
-			target->setEnableBlend ( true, false, shaderTarget::BlendMode::add );
-			target->setTargetBuffer ( overlayDustTexture );
-			target->setTargetBackgroundColor ( i ? juce::Colours::transparentBlack : juce::Colours::black );
-
-			dustTargets.emplace_back ( target );
-		}
+		dustTarget = addTarget ( "overlay-dust-particle.glsl" );
+		dustTarget->setEnableBlend ( true, false, shaderTarget::BlendMode::add );
+		dustTarget->setTargetBuffer ( overlayDustTexture );
+		dustTarget->setTargetBackgroundColor ( juce::Colours::black );
+		dustTarget->setInstances<CRT_DustParticles::renderParticles> ( dustParticles.getParticles () );
 
 		overlayDustTarget = addTarget ( "overlay-dust-layer.glsl" );
 		overlayDustTarget->setEnableBlend ( true, false, lime::shaderTarget::BlendMode::add );
@@ -270,6 +263,7 @@ void CRTEmulation::updateZoom ()
 	if ( rects.size () > 1 )
 	{
 		overlayTarget->setBounds ( rects[ 1 ] );
+		dustTarget->setBufferSizePixelsScaled ( rects[ 1 ].getWidth (), rects[ 1 ].getHeight () );
 		overlayDustTarget->setBounds ( rects[ 1 ] );
 		bezelTarget->setBounds ( rects[ 2 ] );
 		lightTarget->setBounds ( rects[ 3 ] );
@@ -331,28 +325,11 @@ void CRTEmulation::renderOpenGL ()
 									&&	overlayDustTexture
 									&&	curSettings.overlayDust;
 
+		dustTarget->setEnabled ( dustVisible );
 		if ( dustVisible )
 		{
 			dustParticles.update ( deltaTime );
-
-			const auto	scale = float ( openGLContext.getRenderingScale () );
-			const auto	db = overlayDustTarget->getBounds () * scale;
-			const auto	dbW = db.getWidth ();
-			const auto	dbH = db.getHeight ();
-
-			for ( auto i = 0; const auto& d : dustParticles.getParticles () )
-			{
-				auto&	dt = *dustTargets[ i ];
-
-				const auto	dr = dustParticles.getQuad ( d, dbW, dbH, scale );
-
-				dt.setBufferSizePixels ( int ( dbW ), int ( dbH ) );
-
-				dt.setBounds ( dr );
-				dt.setUniform_f ( "u_alpha", d.alpha );
-
-				++i;
-			}
+			dustTarget->setInstances<CRT_DustParticles::renderParticles> ( dustParticles.getParticles () );
 		}
 	}
 
