@@ -77,6 +77,16 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 		}
 
 		targetBuffer->glTexture.asTarget ( targetWidth, targetHeight );
+
+		#if JUCE_WINDOWS
+		{
+			char	label[ 128 ] = { "target:" };
+			std::strcat ( label, name.toRawUTF8 () );
+
+			juce::gl::glObjectLabel ( juce::gl::GL_TEXTURE, targetBuffer->glTexture.getTextureID (), -1, label );
+		}
+		#endif
+
 		juce::gl::glViewport ( 0, 0, targetWidth, targetHeight );
 
 		setUniform_vec3 ( "iResolution", float ( targetWidth ), float ( targetHeight ), 1.0f );
@@ -86,6 +96,10 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 	{
 		juce::gl::glBindFramebuffer ( juce::gl::GL_FRAMEBUFFER, 0 );
 		juce::gl::glViewport ( 0, 0, int ( viewportWidth * scale ), int ( viewportHeight * scale ) );
+
+		#if JUCE_WINDOWS
+			juce::gl::glObjectLabel ( juce::gl::GL_FRAMEBUFFER, 0, -1, getName ().toRawUTF8 () );
+		#endif
 
 		setUniform_vec3 ( "iResolution", viewportWidth * scale, viewportHeight * scale, 1.0f );
 		setUniform_f ( "iScale", scale );
@@ -146,8 +160,13 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 					}
 				}
 
-				if ( oldTextureID != texture->glTexture.getTextureID () )
+				const auto	newTextureID = texture->glTexture.getTextureID ();
+				if ( oldTextureID != newTextureID )
 					shaderUpdated = true;
+
+				#if JUCE_WINDOWS
+					juce::gl::glObjectLabel ( juce::gl::GL_TEXTURE, newTextureID, -1, texture->name.toRawUTF8 () );
+				#endif
 			}
 
 			juce::gl::glActiveTexture ( juce::gl::GL_TEXTURE0 + i );
