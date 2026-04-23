@@ -23,6 +23,10 @@ ShaderToyComponent::ShaderToyComponent ( const bool canHaveChildren )
 	#endif
 
 	// Attach the OpenGL context
+	juce::OpenGLPixelFormat	pf;
+	pf.depthBufferBits = 0;
+	openGLContext.setPixelFormat ( pf );
+
 	openGLContext.setComponentPaintingEnabled ( canHaveChildren );
 	openGLContext.setRenderer ( this );
 	openGLContext.attachTo ( *this );
