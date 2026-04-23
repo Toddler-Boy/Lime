@@ -97,10 +97,6 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 		juce::gl::glBindFramebuffer ( juce::gl::GL_FRAMEBUFFER, 0 );
 		juce::gl::glViewport ( 0, 0, int ( viewportWidth * scale ), int ( viewportHeight * scale ) );
 
-		#if JUCE_WINDOWS
-			juce::gl::glObjectLabel ( juce::gl::GL_FRAMEBUFFER, 0, -1, getName ().toRawUTF8 () );
-		#endif
-
 		setUniform_vec3 ( "iResolution", viewportWidth * scale, viewportHeight * scale, 1.0f );
 		setUniform_f ( "iScale", scale );
 	}
@@ -165,7 +161,8 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 					shaderUpdated = true;
 
 				#if JUCE_WINDOWS
-					juce::gl::glObjectLabel ( juce::gl::GL_TEXTURE, newTextureID, -1, texture->name.toRawUTF8 () );
+					if ( newTextureID )
+						juce::gl::glObjectLabel ( juce::gl::GL_TEXTURE, newTextureID, -1, texture->name.toRawUTF8 () );
 				#endif
 			}
 
