@@ -20,7 +20,7 @@ namespace
 
 float getZ ( const float z )
 {
-	return ( z + 1.0001f ) / 2.0f;
+	return ( z + 1.0f ) / 2.0f;
 }
 
 }
@@ -34,7 +34,7 @@ void CRT_DustParticles::update ( float deltaTime )
 	{
 		// Add chaotic Brownian jitter
 		p.velocity.x += ( random.nextFloat () * 2.0f - 1.0f ) * jitterStrength * deltaTime;
-		p.velocity.y += ( random.nextFloat () * 2.0f - 0.95f ) * jitterStrength * deltaTime;
+		p.velocity.y += ( random.nextFloat () * 2.0f - 1.025f ) * jitterStrength * deltaTime;	// tiny bias to make it drift downwards
 		p.velocity.z += ( random.nextFloat () * 2.0f - 1.0f ) * jitterStrength * deltaTime;
 
 		p.velocity *= drag;
@@ -68,7 +68,7 @@ std::vector<CRT_DustParticles::renderParticles>& CRT_DustParticles::getParticles
 
 		d.x = p.position.x;
 		d.y = p.position.y;
-		d.alpha = getZ ( p.position.z );
+		d.alpha = getZ ( p.position.z ) + 0.001f;
 	}
 
 	return renderData;
