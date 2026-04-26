@@ -677,13 +677,8 @@ void ShaderToyComponent::fileChanged ( const juce::File& file, gin::FileSystemWa
 
 		// Reload shaders
 		for ( auto& shader : targets )
-		{
 			if ( shadersToReload.contains ( shader->getName ().toStdString () ) )
-			{
-				juce::Logger::writeToLog ( "[I]Reloading shader " + shader->getName () );
 				shader->setShaders ( loadShader ( shader->getName () ) );
-			}
-		}
 	}
 
 	// Reload textures
