@@ -1,5 +1,7 @@
 #include "lime_shaderTarget.h"
 
+#include <regex>
+
 namespace lime
 {
 
@@ -212,7 +214,7 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 	updateUniforms ();
 
 	// Send updated vertices
-	if ( instanceData.empty () )
+	if ( pointSpriteData.empty () )
 	{
 		vertexBuffer = {
 			vertices[ 2 ][ 0 ] * scaleW, vertices[ 2 ][ 1 ] * scaleH, vertices[ 2 ][ 2 ], vertices[ 2 ][ 3 ],	0.0f, 0.0f,
@@ -225,7 +227,7 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 	}
 	else
 	{
-		glQuad.setInstances ( instanceData, instanceStride );
+		glQuad.setPointSprites ( pointSpriteData, pointSpriteStride );
 	}
 
 	//
@@ -380,26 +382,52 @@ void shaderTarget::setName ( const juce::String& _name )
 }
 //-----------------------------------------------------------------------------
 
-void shaderTarget::setVertexShader ( const juce::String& shaderStr )
-{
-	setShader ( vertexShaderProgramStr, shaderStr );
-}
-//-----------------------------------------------------------------------------
-
-void shaderTarget::setFragmentShader ( const juce::String& shaderStr )
-{
-	setShader ( fragmentShaderProgramStr, shaderStr );
-}
-//-----------------------------------------------------------------------------
-
-void shaderTarget::setShader ( std::string& dst, const juce::String& shaderStr )
+void shaderTarget::setShaders ( const juce::String& shaderStr )
 {
 	const auto	newPrg = shaderStr.trim ().toStdString ();
-	if ( newPrg == dst )
-		return;
 
+	//
+	// Pre-process the shader code to separate vertex and fragment shader parts if needed
+	//
+
+	// Look for preprocessor directives that indicate shader types
+	static const std::regex	vRegex ( R"(#if(def\s+|\s+defined\s*\(\s*)VERTEX)" );
+	static const std::regex	fRegex ( R"(#if(def\s+|\s+defined\s*\(\s*)FRAGMENT)" );
+
+	const auto	hasVertex = std::regex_search ( newPrg, vRegex );
+	const auto	hasFragment = std::regex_search ( newPrg, fRegex );
+
+	// Extract the version line if it exists, so we can prepend it to the separated shader codes
+	static const std::regex	versionRegex ( R"(^\s*#version\s+[^\r\n]*)" );
+	std::smatch	match;
+
+	std::string	versionLine;
+	auto		remainingCode = newPrg;
+
+	if ( std::regex_search ( newPrg, match, versionRegex ) )
+	{
+		versionLine = match.str () + "\n";
+		remainingCode = match.suffix ();
+	}
+
+	// Prepare separate shader codes with appropriate preprocessor definitions
+	std::string	vertexShaderStr;
+	std::string	fragmentShaderStr;
+
+	if ( hasVertex )
+		vertexShaderStr = versionLine + "#define VERTEX\n" + remainingCode;
+
+	if ( hasFragment )
+		fragmentShaderStr = versionLine + "#define FRAGMENT\n" + remainingCode;
+
+	// If no specific shader type was detected, treat the entire code as a fragment shader (for backward compatibility)
+	if ( ! hasVertex && ! hasFragment )
+		fragmentShaderStr = newPrg;
+
+	// Update shader codes and mark for recompilation
 	rmutex.lock ();
-	dst = std::move ( newPrg );
+	vertexShaderProgramStr = std::move ( vertexShaderStr );
+	fragmentShaderProgramStr = std::move ( fragmentShaderStr );
 	shaderUpdated = true;
 	rmutex.unlock ();
 }
@@ -496,7 +524,7 @@ uniform int			iFrame;						// shader playback frame
 
 void shaderTarget::compileOpenGLShaders ()
 {
-	if ( fragmentShaderProgramStr.empty () )
+	if ( fragmentShaderProgramStr.empty () && vertexShaderProgramStr.empty () )
 	{
 		shaderUpdated = false;
 		return;

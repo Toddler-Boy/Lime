@@ -29,15 +29,15 @@ public:
 	void setVertices ( const std::array<std::array<float, 4>, 4>& v );
 
 	template <typename T>
-	void setInstances ( std::span<const T> data )
+	void setPointSprites ( std::span<const T> data )
 	{
-		static_assert ( std::is_standard_layout_v<T>, "Instance struct must be POD" );
+		static_assert ( std::is_standard_layout_v<T>, "Point sprite struct must be POD" );
 
 		// Capture the raw float data and how many floats per struct
-		instanceData = { reinterpret_cast<const float*> ( data.data () ), data.size_bytes () / sizeof ( float ) };
-		instanceStride = sizeof ( T ) / sizeof ( float );
+		pointSpriteData = { reinterpret_cast<const float*> ( data.data () ), data.size_bytes () / sizeof ( float ) };
+		pointSpriteStride = sizeof ( T ) / sizeof ( float );
 
-		glQuad.setInstances ( instanceData, instanceStride );
+		glQuad.setPointSprites ( pointSpriteData, pointSpriteStride );
 	}
 
 	void setName ( const juce::String& name );
@@ -51,10 +51,9 @@ public:
 	void setMeasurePerformance ( const bool _enabled ) { measurePerformance = _enabled; }
 	float getMeasuredTimeMs () const { return glQuad.getElapsedTimeMs (); }
 
-	void setVertexShader ( const juce::String& shaderStr );
-	void setFragmentShader ( const juce::String& shaderStr );
+	void setShaders ( const juce::String& shaderStr );
 
-	enum BlendMode
+	enum BlendMode : int8_t
 	{
 		normal,
 		add,
@@ -116,10 +115,10 @@ private:
 	std::array<openGL_Quad::vertex, 4>	vertexBuffer {};
 
 	//
-	// Instance data
+	// Point sprite data
 	//
-	std::span<const float>	instanceData;
-	int						instanceStride = 0;
+	std::span<const float>	pointSpriteData;
+	int						pointSpriteStride = 0;
 
 	//
 	// Textures
@@ -141,8 +140,6 @@ private:
 	//
 	void compileOpenGLShaders ();
 	juce::String	openGLStatus;
-
-	void setShader ( std::string& dst, const juce::String& shaderStr );
 
 	std::recursive_mutex	rmutex;
 	std::atomic<bool>		shaderUpdated = false;
@@ -180,7 +177,7 @@ private:
 	//
 	// Remember sizes and size-modes
 	//
-	enum autoSizeModes
+	enum autoSizeModes : int8_t
 	{
 		none = 0,
 		pixels,

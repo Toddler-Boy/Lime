@@ -22,7 +22,7 @@ public:
 
 	// Set the vertices of the quad
 	void setVertices ( const std::array<vertex, 4>& vertexBuffer );
-	void setInstances ( std::span<const float> instanceData, int instanceStride );
+	void setPointSprites ( std::span<const float> pointSpriteData, int pointSpriteStride );
 	void draw ();
 
 	// Performance measurement
@@ -48,8 +48,8 @@ private:
 	// Instance data in case we want to use point-sprites
 	GLuint	instanceVAO = 0;
 	GLuint	instanceVBO = 0;
-	std::span<const float>	instanceData;
-	int		instanceStride = 0;
+	std::span<const float>	pointSpriteData;
+	int		pointSpriteStride = 0;
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR ( openGL_Quad )
 };

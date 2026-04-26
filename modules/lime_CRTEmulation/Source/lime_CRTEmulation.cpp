@@ -231,7 +231,7 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const juce::File& _root
 		dustTarget->setEnableBlend ( true, false, shaderTarget::BlendMode::add );
 		dustTarget->setTargetBuffer ( overlayDustTexture );
 		dustTarget->setTargetBackgroundColor ( juce::Colours::black );
-		dustTarget->setInstances<CRT_DustParticles::renderParticles> ( dustParticles.getParticles () );
+		dustTarget->setPointSprites<CRT_DustParticles::renderParticles> ( dustParticles.getParticles () );
 
 		overlayDustTarget = addTarget ( "overlay-dust-layer.glsl" );
 		overlayDustTarget->setEnableBlend ( true, false, lime::shaderTarget::BlendMode::add );
@@ -329,7 +329,7 @@ void CRTEmulation::renderOpenGL ()
 		if ( dustVisible )
 		{
 			dustParticles.update ( deltaTime );
-			dustTarget->setInstances<CRT_DustParticles::renderParticles> ( dustParticles.getParticles () );
+			dustTarget->setPointSprites<CRT_DustParticles::renderParticles> ( dustParticles.getParticles () );
 		}
 	}
 

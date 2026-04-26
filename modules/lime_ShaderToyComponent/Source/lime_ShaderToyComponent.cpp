@@ -198,10 +198,7 @@ void ShaderToyComponent::setRoot ( const juce::File& _root, const juce::File& _l
 
 	// (Re)load all shaders
 	for ( auto& dst : targets )
-	{
-		dst->setFragmentShader ( loadShader ( dst->getName () ) );
-		dst->setVertexShader ( loadShader ( dst->getName ().replace ( ".glsl", ".vert" ) ) );
-	}
+		dst->setShaders ( loadShader ( dst->getName () ) );
 
 	// (Re)load all textures
 	for ( auto& dst : textures )
@@ -519,8 +516,7 @@ void ShaderToyComponent::setTargetShader ( shaderTarget* dst, const juce::String
 	jassert ( name.isNotEmpty () );
 
 	dst->setName ( name );
-	dst->setFragmentShader ( loadShader ( name ) );
-	dst->setVertexShader ( loadShader ( name.replace ( ".glsl", ".vert" ) ) );
+	dst->setShaders ( loadShader ( name ) );
 }
 //-----------------------------------------------------------------------------
 
@@ -618,6 +614,32 @@ double ShaderToyComponent::getDeltaTime ()
 }
 //-----------------------------------------------------------------------------
 
+juce::File ShaderToyComponent::findFile ( const juce::String& name )
+{
+	auto	file = juce::File ();
+
+	if ( localRoot != juce::File () )
+		if ( file = localRoot.getChildFile ( name ); file.existsAsFile () )
+			return file;
+
+	if ( root != juce::File () )
+	{
+		if ( name.endsWithIgnoreCase ( ".glsl" ) )
+		{
+			if ( file = root.getChildFile ( shaderFolderName + "/" + name ); file.existsAsFile () )
+				return file;
+		}
+		else
+		{
+			if ( file = root.getChildFile ( textureFolderName + "/" + name ); file.existsAsFile () )
+				return file;
+		}
+	}
+
+	return {};
+}
+//-----------------------------------------------------------------------------
+
 void ShaderToyComponent::fileChanged ( const juce::File& file, gin::FileSystemWatcher::FileSystemEvent /*event*/ )
 {
 	if ( file == renderPipeline )
@@ -638,21 +660,31 @@ void ShaderToyComponent::fileChanged ( const juce::File& file, gin::FileSystemWa
 
 	const auto	name = file.getFullPathName ().replaceCharacter ( '\\', '/' );
 
-	// recompile ALL fragment-shaders, if their common-file has changed
-	if ( name.endsWithIgnoreCase ( "/common.glsl" ) )
+	// Build list of all shaders that need to be reloaded, based on dependencies
 	{
+		std::set<std::string>	shadersToReload;
+
+		// First check dependencies
+		for ( const auto& [ shader, dependencies ] : shaderDependencies )
+			for ( const auto& dep : dependencies )
+				if ( findFile ( dep ) == file )
+					shadersToReload.insert ( shader );
+
+		// Check file matches
+		for ( const auto& dst : targets )
+			if ( findFile ( dst->getName () ) == file )
+				shadersToReload.insert ( dst->getName ().toStdString () );
+
+		// Reload shaders
 		for ( auto& shader : targets )
-			shader->setFragmentShader ( loadShader ( shader->getName () ) );
-
-		return;
+		{
+			if ( shadersToReload.contains ( shader->getName ().toStdString () ) )
+			{
+				juce::Logger::writeToLog ( "[I]Reloading shader " + shader->getName () );
+				shader->setShaders ( loadShader ( shader->getName () ) );
+			}
+		}
 	}
-
-	// Recompile shaders
-	for ( auto& dst : targets )
-		if ( name.endsWithIgnoreCase ( dst->getName () ) )
-			dst->setFragmentShader ( loadShader ( file.getFileName () ) );
-		else if ( name.endsWithIgnoreCase ( dst->getName ().replace ( ".glsl", ".vert" ) ) )
-			dst->setVertexShader ( loadShader ( file.getFileName () ) );
 
 	// Reload textures
 	for ( auto& txt : textures )
@@ -662,54 +694,64 @@ void ShaderToyComponent::fileChanged ( const juce::File& file, gin::FileSystemWa
 }
 //-----------------------------------------------------------------------------
 
-juce::File ShaderToyComponent::findFile ( const juce::String& name )
+void ShaderToyComponent::processRecursive ( std::string& source, std::set<std::string>& dependencies )
 {
-	auto	file = juce::File ();
+	// Matches #include "filename" or #include <filename>
+	static const std::regex	includeRegex ( R"(^\s*#include\s+["<]([^">]+)[">])", std::regex_constants::multiline );
 
-	if ( localRoot != juce::File () )
-		if ( file = localRoot.getChildFile ( name ); file.existsAsFile () )
-			return file;
+	std::smatch	match;
 
-	if ( root != juce::File () )
+	while ( std::regex_search ( source, match, includeRegex ) )
 	{
-		if ( name.endsWithIgnoreCase ( ".glsl" ) || name.endsWithIgnoreCase ( ".vert" ) )
-		{
-			if ( file = root.getChildFile ( shaderFolderName + "/" + name ); file.existsAsFile () )
-				return file;
-		}
-		else
-		{
-			if ( file = root.getChildFile ( textureFolderName + "/" + name ); file.existsAsFile () )
-				return file;
-		}
-	}
+		auto	fileName = match[ 1 ].str ();
 
-	return {};
+		// Add to our hot-reload tracking list
+		dependencies.insert ( fileName );
+
+		// Load content and recursively process it before injection
+		auto	includeContent = findFile ( fileName ).loadFileAsString ().toStdString ();
+		processRecursive ( includeContent, dependencies );
+
+		// Replace the #include line with the processed content
+		source.replace ( match.position (), match.length (), includeContent );
+	}
 }
 //-----------------------------------------------------------------------------
 
 juce::String ShaderToyComponent::loadShader ( juce::String name )
 {
-	if ( ! ( name.endsWithIgnoreCase ( ".glsl" ) || name.endsWithIgnoreCase ( ".vert" ) ) )
+	if ( ! name.endsWithIgnoreCase ( ".glsl" ) )
 		return {};
 
 	if ( name.startsWithChar ( '/' ) )
 		name = name.substring ( 1 );
 
 	auto	shaderStr = findFile ( name ).loadFileAsString ();
-	if ( shaderStr.isEmpty () && name.endsWithIgnoreCase ( ".glsl" ) )
+	if ( shaderStr.isEmpty () )
 	{
 		juce::Logger::writeToLog ( "[E]Can't find shader named " + name.quoted () );
 		return {};
 	}
 
-	if ( shaderStr.containsIgnoreCase ( "#version" ) )
-		return shaderStr;
+	//
+	// Pre-process includes
+	//
+	std::string				shaderSource = shaderStr.toStdString ();
+	std::set<std::string>	dependencies;
+	processRecursive ( shaderSource, dependencies );
+	shaderStr = shaderSource;
+
+	shaderDependencies[ name.toStdString () ] = dependencies;
 
 	// Check for common-file
-	if ( name.endsWithIgnoreCase ( ".glsl" ) )
+	if ( ! shaderStr.containsIgnoreCase ( "#version" ) && dependencies.empty () )
+	{
 		if ( auto commonStr = findFile ( "common.glsl" ).loadFileAsString (); commonStr.isNotEmpty () )
+		{
+			shaderDependencies[ name.toStdString () ] = { "common.glsl" };
 			return commonStr + "\n" + shaderStr;
+		}
+	}
 
 	return shaderStr;
 }
@@ -724,15 +766,9 @@ static const char* getGLErrorMessage ( const GLenum e ) noexcept
 		case juce::gl::GL_INVALID_VALUE:                  return "GL_INVALID_VALUE";
 		case juce::gl::GL_INVALID_OPERATION:              return "GL_INVALID_OPERATION";
 		case juce::gl::GL_OUT_OF_MEMORY:                  return "GL_OUT_OF_MEMORY";
-			#ifdef GL_STACK_OVERFLOW
 		case juce::gl::GL_STACK_OVERFLOW:                 return "GL_STACK_OVERFLOW";
-			#endif
-			#ifdef GL_STACK_UNDERFLOW
 		case juce::gl::GL_STACK_UNDERFLOW:                return "GL_STACK_UNDERFLOW";
-			#endif
-			#ifdef GL_INVALID_FRAMEBUFFER_OPERATION
 		case juce::gl::GL_INVALID_FRAMEBUFFER_OPERATION:  return "GL_INVALID_FRAMEBUFFER_OPERATION";
-			#endif
 		default: break;
 	}
 
@@ -743,7 +779,7 @@ static const char* getGLErrorMessage ( const GLenum e ) noexcept
 {
 	for ( ;; )
 	{
-		const GLenum e = juce::gl::glGetError ();
+		const auto	e = juce::gl::glGetError ();
 
 		if ( e == juce::gl::GL_NO_ERROR )
 			break;

@@ -57,7 +57,7 @@ void openGL_Quad::newContext ()
 
 	auto&	ogl = ownerContext->extensions;
 
-	if ( instanceData.empty () )
+	if ( pointSpriteData.empty () )
 	{
 		ogl.glGenVertexArrays ( 1, &quadVAO );
 
@@ -98,10 +98,10 @@ void openGL_Quad::setVertices ( const std::array<vertex, 4>& vertexBuffer )
 }
 //-----------------------------------------------------------------------------
 
-void openGL_Quad::setInstances ( std::span<const float> _instanceData, int _instanceStride )
+void openGL_Quad::setPointSprites ( std::span<const float> _instanceData, int _instanceStride )
 {
-	instanceData = _instanceData;
-	instanceStride = _instanceStride;
+	pointSpriteData = _instanceData;
+	pointSpriteStride = _instanceStride;
 }
 //-----------------------------------------------------------------------------
 
@@ -109,7 +109,7 @@ void openGL_Quad::draw ()
 {
 	auto& ogl = ownerContext->extensions;
 
-	if ( instanceData.empty () )
+	if ( pointSpriteData.empty () )
 	{
 		ogl.glBindVertexArray ( quadVAO );
 
@@ -139,14 +139,14 @@ void openGL_Quad::draw ()
 
 		// Upload the generic span data
 		ogl.glBindBuffer ( juce::gl::GL_ARRAY_BUFFER, instanceVBO );
-		ogl.glBufferData ( juce::gl::GL_ARRAY_BUFFER, instanceData.size_bytes (), instanceData.data (), juce::gl::GL_STREAM_DRAW );
+		ogl.glBufferData ( juce::gl::GL_ARRAY_BUFFER, pointSpriteData.size_bytes (), pointSpriteData.data (), juce::gl::GL_STREAM_DRAW );
 
 		// Map the generic stride to location 0
 		ogl.glEnableVertexAttribArray ( 0 );
-		ogl.glVertexAttribPointer ( 0, instanceStride, juce::gl::GL_FLOAT, juce::gl::GL_FALSE, sizeof ( float ) * instanceStride, nullptr );
+		ogl.glVertexAttribPointer ( 0, pointSpriteStride, juce::gl::GL_FLOAT, juce::gl::GL_FALSE, sizeof ( float ) * pointSpriteStride, nullptr );
 
 		// Draw all points in one go
-		juce::gl::glDrawArrays ( juce::gl::GL_POINTS, 0, (GLsizei)( instanceData.size () / instanceStride ) );
+		juce::gl::glDrawArrays ( juce::gl::GL_POINTS, 0, (GLsizei)( pointSpriteData.size () / pointSpriteStride ) );
 
 		ogl.glBindVertexArray ( 0 );
 		ogl.glBindBuffer ( juce::gl::GL_ARRAY_BUFFER, 0 );

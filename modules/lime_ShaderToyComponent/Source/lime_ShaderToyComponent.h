@@ -99,6 +99,9 @@ protected:
 	std::vector<std::unique_ptr<shaderTarget>>			targets;
 
 private:
+	void processRecursive ( std::string& source, std::set<std::string>& dependencies );
+	std::unordered_map<std::string, std::set<std::string>>	shaderDependencies;
+
 	//
 	// Helpers
 	//
