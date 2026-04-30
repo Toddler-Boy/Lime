@@ -641,7 +641,7 @@ void shaderTarget::compileOpenGLShaders ()
 	}
 
 	auto	fragmentPrefix = std::string ();
-	if ( ! renderFragmentShaderStr.starts_with ( '#' ) )
+	if ( ! renderFragmentShaderStr.contains ( "#version" ) )
 	{
 		fragmentPrefix = defaultShaderStrings::fragmentPrefix;
 
