@@ -29,15 +29,13 @@ public:
 	void setVertices ( const std::array<std::array<float, 4>, 4>& v );
 
 	template <typename T>
-	void setPointSprites ( std::span<const T> data )
+	void initFeedbackBuffers ( std::span<T> initialData, std::span<openGL_Quad::feedbackVarying> varyings )
 	{
-		static_assert ( std::is_standard_layout_v<T>, "Point sprite struct must be POD" );
+		static_assert ( std::is_standard_layout_v<T>, "feedback struct must be POD" );
 
-		// Capture the raw float data and how many floats per struct
-		pointSpriteData = { reinterpret_cast<const float*> ( data.data () ), data.size_bytes () / sizeof ( float ) };
-		pointSpriteStride = sizeof ( T ) / sizeof ( float );
+		feedbackVaryings.assign ( varyings.begin (), varyings.end () );
 
-		glQuad.setPointSprites ( pointSpriteData, pointSpriteStride );
+		glQuad.setFeedbackData ( { reinterpret_cast<const float*> ( initialData.data () ), initialData.size_bytes () / sizeof ( float ) }, feedbackVaryings );
 	}
 
 	void setName ( const juce::String& name );
@@ -117,8 +115,7 @@ private:
 	//
 	// Point sprite data
 	//
-	std::span<const float>	pointSpriteData;
-	int						pointSpriteStride = 0;
+	std::vector<openGL_Quad::feedbackVarying>	feedbackVaryings;
 
 	//
 	// Textures
@@ -135,6 +132,8 @@ private:
 	static constexpr auto	maxTextures = 16;
 	std::array<shaderTextureMeta, maxTextures>	textures {};
 
+	void showLinkErrors ( juce::OpenGLShaderProgram* shaderProgramAttempt, const std::string& programSrc );
+
 	//
 	// Shaders
 	//
@@ -143,16 +142,21 @@ private:
 
 	std::recursive_mutex	rmutex;
 	std::atomic<bool>		shaderUpdated = false;
-	std::string				vertexShaderProgramStr;
-	std::string				fragmentShaderProgramStr;
-	std::unique_ptr<juce::OpenGLShaderProgram>	shaderProgram;
+
+	std::string				updateVertexShaderStr;
+	std::string				renderVertexShaderStr;
+	std::string				renderFragmentShaderStr;
+
+	std::unique_ptr<juce::OpenGLShaderProgram>	updateProgram;
+	std::unique_ptr<juce::OpenGLShaderProgram>	renderProgram;
 
 	//
 	// Uniforms
 	//
 	struct uniform
 	{
-		std::unique_ptr<juce::OpenGLShaderProgram::Uniform>	uniformPtr;
+		std::unique_ptr<juce::OpenGLShaderProgram::Uniform>	uniformPtr[ 2 ];
+
 		union
 		{
 			float	fValues[ 4 ];
@@ -161,13 +165,13 @@ private:
 		bool	isFloat;
 		int		count;
 
-		void update ();
+		void update ( const int index );
 	};
 	std::unordered_map<std::string, uniform>	uniforms;
 
 	void removeUniform ( const std::string& name );
 	void resetUniforms ();
-	void updateUniforms ();
+	void updateUniforms ( juce::OpenGLShaderProgram* prg, const int index );
 
 	//
 	// Target buffer

@@ -10,7 +10,7 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const juce::File& _root
 	, juce::Thread ( "CRTEmulation webcam thread" )
 	, res ( _res )
 	, indexBuffer ( 1, 384, 272 )
-	, dustParticles ( 200 )
+	, dustParticles ( 300 )
 {
 	setName ( "lime::CRTEmulation" );
 	setOpaque ( true );
@@ -231,7 +231,13 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const juce::File& _root
 		dustTarget->setEnableBlend ( true, false, shaderTarget::BlendMode::add );
 		dustTarget->setTargetBuffer ( overlayDustTexture );
 		dustTarget->setTargetBackgroundColor ( juce::Colours::black );
-		dustTarget->setPointSprites<CRT_DustParticles::renderParticles> ( dustParticles.getParticles () );
+
+		std::vector<openGL_Quad::feedbackVarying> feedbackVars =
+		{
+			{ "outPos", 3 },
+			{ "outVel", 3 },
+		};
+		dustTarget->initFeedbackBuffers ( std::span { dustParticles.getParticles () }, feedbackVars );
 
 		overlayDustTarget = addTarget ( "overlay-dust-layer.glsl" );
 		overlayDustTarget->setEnableBlend ( true, false, lime::shaderTarget::BlendMode::add );
@@ -326,11 +332,7 @@ void CRTEmulation::renderOpenGL ()
 									&&	curSettings.overlayDust;
 
 		dustTarget->setEnabled ( dustVisible );
-		if ( dustVisible )
-		{
-			dustParticles.update ( deltaTime );
-			dustTarget->setPointSprites<CRT_DustParticles::renderParticles> ( dustParticles.getParticles () );
-		}
+		dustTarget->setUniform_f ( "deltaTime", float ( deltaTime ) );
 	}
 
 	// Framerate-independent LERP

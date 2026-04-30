@@ -29,7 +29,7 @@ void shaderTarget::losingContext ()
 
 	glQuad.release ();
 
-	shaderProgram.reset ();
+	renderProgram.reset ();
 }
 //-----------------------------------------------------------------------------
 
@@ -205,16 +205,50 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 		resetUniforms ();
 	}
 
-	if ( shaderProgram )
-		shaderProgram->use ();
+	//
+	// Start measuring performance
+	//
+	if ( measurePerformance )
+		glQuad.beginMeasurement ();
 
 	//
-	// Create/update uniforms
+	// Update vertices using transform feedback
 	//
-	updateUniforms ();
+	if ( updateProgram )
+	{
+		updateProgram->use ();
 
-	// Send updated vertices
-	if ( pointSpriteData.empty () )
+		//
+		// Create/update uniforms
+		//
+		updateUniforms ( updateProgram.get (), 0 );
+
+		juce::gl::glEnable ( juce::gl::GL_RASTERIZER_DISCARD );
+
+		glQuad.bindForUpdate ();
+
+		juce::gl::glBeginTransformFeedback ( juce::gl::GL_POINTS );
+		juce::gl::glDrawArrays ( juce::gl::GL_POINTS, 0, glQuad.getParticleCount () );
+		juce::gl::glEndTransformFeedback ();
+
+		juce::gl::glBindTransformFeedback ( juce::gl::GL_TRANSFORM_FEEDBACK, 0 );
+		juce::gl::glDisable ( juce::gl::GL_RASTERIZER_DISCARD );
+
+		glQuad.swapFeedbackBuffers ();
+	}
+
+	if ( renderProgram )
+	{
+		renderProgram->use ();
+
+		//
+		// Create/update uniforms
+		//
+		updateUniforms ( renderProgram.get (), 1 );
+	}
+
+	// Regular quad
+	if ( updateVertexShaderStr.empty () )
 	{
 		vertexBuffer = {
 			vertices[ 2 ][ 0 ] * scaleW, vertices[ 2 ][ 1 ] * scaleH, vertices[ 2 ][ 2 ], vertices[ 2 ][ 3 ],	0.0f, 0.0f,
@@ -224,10 +258,6 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 		};
 
 		glQuad.setVertices ( vertexBuffer );
-	}
-	else
-	{
-		glQuad.setPointSprites ( pointSpriteData, pointSpriteStride );
 	}
 
 	//
@@ -245,12 +275,6 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 	{
 		juce::gl::glDisable ( juce::gl::GL_BLEND );
 	}
-
-	//
-	// Finally draw something
-	//
-	if ( measurePerformance )
-		glQuad.beginMeasurement ();
 
 	//
 	// Clear background
@@ -391,9 +415,11 @@ void shaderTarget::setShaders ( const juce::String& shaderStr )
 	//
 
 	// Look for preprocessor directives that indicate shader types
+	static const std::regex	uRegex ( R"(#if(def\s+|\s+defined\s*\(\s*)UPDATE)" );
 	static const std::regex	vRegex ( R"(#if(def\s+|\s+defined\s*\(\s*)VERTEX)" );
 	static const std::regex	fRegex ( R"(#if(def\s+|\s+defined\s*\(\s*)FRAGMENT)" );
 
+	const auto	hasUpdate = std::regex_search ( newPrg, uRegex );
 	const auto	hasVertex = std::regex_search ( newPrg, vRegex );
 	const auto	hasFragment = std::regex_search ( newPrg, fRegex );
 
@@ -406,13 +432,17 @@ void shaderTarget::setShaders ( const juce::String& shaderStr )
 
 	if ( std::regex_search ( newPrg, match, versionRegex ) )
 	{
-		versionLine = match.str () + "\n";
+		versionLine = match.str () + "\n\n";
 		remainingCode = match.suffix ();
 	}
 
 	// Prepare separate shader codes with appropriate preprocessor definitions
+	std::string	updateShaderStr;
 	std::string	vertexShaderStr;
 	std::string	fragmentShaderStr;
+
+	if ( hasUpdate )
+		updateShaderStr = versionLine + "#define UPDATE\n" + remainingCode;
 
 	if ( hasVertex )
 		vertexShaderStr = versionLine + "#define VERTEX\n" + remainingCode;
@@ -421,13 +451,14 @@ void shaderTarget::setShaders ( const juce::String& shaderStr )
 		fragmentShaderStr = versionLine + "#define FRAGMENT\n" + remainingCode;
 
 	// If no specific shader type was detected, treat the entire code as a fragment shader (for backward compatibility)
-	if ( ! hasVertex && ! hasFragment )
+	if ( ! hasUpdate && ! hasVertex && ! hasFragment )
 		fragmentShaderStr = newPrg;
 
 	// Update shader codes and mark for recompilation
 	rmutex.lock ();
-	vertexShaderProgramStr = std::move ( vertexShaderStr );
-	fragmentShaderProgramStr = std::move ( fragmentShaderStr );
+	updateVertexShaderStr = std::move ( updateShaderStr );
+	renderVertexShaderStr = std::move ( vertexShaderStr );
+	renderFragmentShaderStr = std::move ( fragmentShaderStr );
 	shaderUpdated = true;
 	rmutex.unlock ();
 }
@@ -521,17 +552,96 @@ uniform int			iFrame;						// shader playback frame
 )";
 
 }
+//-----------------------------------------------------------------------------
+
+void shaderTarget::showLinkErrors ( juce::OpenGLShaderProgram* shaderProgramAttempt, const std::string& programSrc )
+{
+	openGLStatus = shaderProgramAttempt->getLastError ();
+
+	if ( openGLStatus.isNotEmpty () )
+	{
+		juce::Logger::writeToLog ( "[E]" + getName () );
+		juce::Logger::writeToLog ( "[E]" + openGLStatus );
+
+		// Find the line mention in the error message and print the shader code around it for easier debugging
+		const auto	errorLine = openGLStatus.fromFirstOccurrenceOf ( "(", false, false ).upToFirstOccurrenceOf ( ")", false, false ).getIntValue () - 1;
+
+		auto	shaderLines = juce::StringArray::fromLines ( programSrc );
+
+		// Print 5 lines before and after the error line
+		for ( auto i = std::max ( 0, errorLine - 5 ); i < std::min ( shaderLines.size (), errorLine + 6 ); ++i )
+		{
+			const auto	lineNum = juce::String ( i + 1 ).paddedLeft ( ' ', 3 );
+			const auto	linePrefix = ( i == errorLine ) ? ">>" : "  ";
+			const auto	lineContent = shaderLines[ i ].replace ( "\t", "    " );
+
+			juce::Logger::writeToLog ( juce::String ( i == errorLine ? "[E]" : "[L]" ) + linePrefix + lineNum + ": " + lineContent );
+		}
+	}
+}
+//-----------------------------------------------------------------------------
 
 void shaderTarget::compileOpenGLShaders ()
 {
-	if ( fragmentShaderProgramStr.empty () && vertexShaderProgramStr.empty () )
+	if ( updateVertexShaderStr.empty () && renderVertexShaderStr.empty () && renderFragmentShaderStr.empty () )
 	{
 		shaderUpdated = false;
 		return;
 	}
 
+	//
+	// Update shader
+	//
+	if ( ! updateVertexShaderStr.empty () )
+	{
+		auto	updateShaderProgramAttempt = std::make_unique<juce::OpenGLShaderProgram> ( openGLContext );
+
+		const auto	pid = updateShaderProgramAttempt->getProgramID ();
+
+		// Manually compile and attach the Vertex Shader
+		auto	vShader = juce::gl::glCreateShader ( juce::gl::GL_VERTEX_SHADER );
+		const auto*	src = updateVertexShaderStr.c_str ();
+		juce::gl::glShaderSource ( vShader, 1, &src, nullptr );
+		juce::gl::glCompileShader ( vShader );
+		juce::gl::glAttachShader ( pid, vShader );
+
+		// Manually compile and attach a dummy fragment shader (required for many drivers)
+		auto	fShader = juce::gl::glCreateShader ( juce::gl::GL_FRAGMENT_SHADER );
+		const auto*	fSrc = "#version 410 core\n void main() {}";
+		juce::gl::glShaderSource ( fShader, 1, &fSrc, nullptr );
+		juce::gl::glCompileShader ( fShader );
+		juce::gl::glAttachShader ( pid, fShader );
+
+		// Define the varyings
+		std::vector<const char*>	names;
+		for ( const auto& v : feedbackVaryings )
+			names.push_back ( v.name.c_str () );
+
+		juce::gl::glTransformFeedbackVaryings ( pid, (GLsizei)names.size (), names.data (), juce::gl::GL_INTERLEAVED_ATTRIBS );
+
+		if ( updateShaderProgramAttempt->link () )
+		{
+			updateProgram = std::move ( updateShaderProgramAttempt );
+		}
+		else
+		{
+			juce::Logger::writeToLog ( "[E]Update Shader Link Failed: " + updateShaderProgramAttempt->getLastError () );
+
+			showLinkErrors ( updateShaderProgramAttempt.get (), updateVertexShaderStr );
+
+			updateProgram.reset ();
+		}
+
+		juce::gl::glDeleteShader ( vShader );
+		juce::gl::glDeleteShader ( fShader );
+	}
+	else
+	{
+		updateProgram.reset ();
+	}
+
 	auto	fragmentPrefix = std::string ();
-	if ( ! fragmentShaderProgramStr.starts_with ( '#' ) )
+	if ( ! renderFragmentShaderStr.starts_with ( '#' ) )
 	{
 		fragmentPrefix = defaultShaderStrings::fragmentPrefix;
 
@@ -579,34 +689,17 @@ void shaderTarget::compileOpenGLShaders ()
 
 	auto	shaderProgramAttempt = std::make_unique<juce::OpenGLShaderProgram> ( openGLContext );
 
-	// Attempt to compile the program
-	shaderProgramAttempt->addVertexShader ( vertexShaderProgramStr.empty () ? defaultShaderStrings::vertexShader : vertexShaderProgramStr );
-	shaderProgramAttempt->addFragmentShader ( fragmentPrefix + fragmentShaderProgramStr );
+	// Attempt to compile the render program
+	shaderProgramAttempt->addVertexShader ( renderVertexShaderStr.empty () ? defaultShaderStrings::vertexShader : renderVertexShaderStr );
+
+	const auto	fragmentShaderSource = fragmentPrefix + renderFragmentShaderStr;
+
+	shaderProgramAttempt->addFragmentShader ( fragmentShaderSource );
 	shaderProgramAttempt->link ();
 
-	openGLStatus = shaderProgramAttempt->getLastError ();
-	if ( openGLStatus.isNotEmpty () )
-	{
-		juce::Logger::writeToLog ( "[E]" + getName () );
-		juce::Logger::writeToLog ( "[E]" + openGLStatus );
+	showLinkErrors ( shaderProgramAttempt.get (), fragmentShaderSource );
 
-		// Find the line mention in the error message and print the shader code around it for easier debugging
-		const auto	errorLine = openGLStatus.fromFirstOccurrenceOf ( "(", false, false ).upToFirstOccurrenceOf ( ")", false, false ).getIntValue () - 1;
-
-		auto	shaderLines = juce::StringArray::fromLines ( fragmentPrefix + fragmentShaderProgramStr );
-
-		// Print 5 lines before and after the error line
-		for ( auto i = std::max ( 0, errorLine - 5 ); i < std::min ( shaderLines.size (), errorLine + 6 ); ++i )
-		{
-			const auto	lineNum = juce::String ( i + 1 ).paddedLeft ( ' ', 3 );
-			const auto	linePrefix = ( i == errorLine ) ? ">>" : "  ";
-			const auto	lineContent = shaderLines[ i ].replace ( "\t", "    " );
-
-			juce::Logger::writeToLog ( juce::String ( i == errorLine ? "[E]" : "[L]" ) + linePrefix + lineNum + ": " + lineContent );
-		}
-	}
-
-	shaderProgram = std::move ( shaderProgramAttempt );
+	renderProgram = std::move ( shaderProgramAttempt );
 	shaderUpdated = false;
 }
 //-----------------------------------------------------------------------------
@@ -703,27 +796,30 @@ void shaderTarget::setUniform_ivec4 ( const std::string& uniName, const int n1, 
 }
 //-----------------------------------------------------------------------------
 
-void shaderTarget::uniform::update ()
+void shaderTarget::uniform::update ( const int index )
 {
-	auto& uni = *uniformPtr;
-
-	if ( isFloat )
+	if ( auto& uniPtr = uniformPtr[ index ] )
 	{
+		auto&	uni = *uniPtr;
+
+		if ( isFloat )
+		{
+			switch ( count )
+			{
+				case 1:	uni.set ( fValues[ 0 ] );											return;
+				case 2:	uni.set ( fValues[ 0 ], fValues[ 1 ] );								return;
+				case 3:	uni.set ( fValues[ 0 ], fValues[ 1 ], fValues[ 2 ] );				return;
+				case 4:	uni.set ( fValues[ 0 ], fValues[ 1 ], fValues[ 2 ], fValues[ 3 ] );	return;
+			}
+		}
+
 		switch ( count )
 		{
-			case 1:	uni.set ( fValues[ 0 ] );											return;
-			case 2:	uni.set ( fValues[ 0 ], fValues[ 1 ] );								return;
-			case 3:	uni.set ( fValues[ 0 ], fValues[ 1 ], fValues[ 2 ] );				return;
-			case 4:	uni.set ( fValues[ 0 ], fValues[ 1 ], fValues[ 2 ], fValues[ 3 ] );	return;
+			case 1:	uni.set ( iValues[ 0 ] );												return;
+			case 2:	uni.set ( iValues[ 0 ], iValues[ 1 ] );									return;
+			case 3:	uni.set ( iValues[ 0 ], iValues[ 1 ], iValues[ 2 ] );					return;
+			case 4:	uni.set ( iValues[ 0 ], iValues[ 1 ], iValues[ 2 ], iValues[ 3 ] );		return;
 		}
-	}
-
-	switch ( count )
-	{
-		case 1:	uni.set ( iValues[ 0 ] );												return;
-		case 2:	uni.set ( iValues[ 0 ], iValues[ 1 ] );									return;
-		case 3:	uni.set ( iValues[ 0 ], iValues[ 1 ], iValues[ 2 ] );					return;
-		case 4:	uni.set ( iValues[ 0 ], iValues[ 1 ], iValues[ 2 ], iValues[ 3 ] );		return;
 	}
 }
 //-----------------------------------------------------------------------------
@@ -737,21 +833,21 @@ void shaderTarget::removeUniform ( const std::string& uniName )
 void shaderTarget::resetUniforms ()
 {
 	for ( auto& [ uniName, uni ] : uniforms )
-		uni.uniformPtr.reset ();
+	{
+		uni.uniformPtr[ 0 ].reset ();
+		uni.uniformPtr[ 1 ].reset ();
+	}
 }
 //-----------------------------------------------------------------------------
 
-void shaderTarget::updateUniforms ()
+void shaderTarget::updateUniforms ( juce::OpenGLShaderProgram* prg, const int index )
 {
-	if ( ! shaderProgram )
-		return;
-
 	for ( auto& [ uniName, uni ] : uniforms )
 	{
-		if ( ! uni.uniformPtr )
-			uni.uniformPtr = std::make_unique<juce::OpenGLShaderProgram::Uniform> ( *shaderProgram, uniName.c_str () );
+		if ( ! uni.uniformPtr[ index ] )
+			uni.uniformPtr[ index ] = std::make_unique<juce::OpenGLShaderProgram::Uniform> ( *prg, uniName.c_str () );
 
-		uni.update ();
+		uni.update ( index );
 	}
 }
 //-----------------------------------------------------------------------------

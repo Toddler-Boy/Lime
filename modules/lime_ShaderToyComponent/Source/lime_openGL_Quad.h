@@ -13,6 +13,12 @@ public:
 		float	textureUV[ 2 ];
 	};
 
+	struct feedbackVarying
+	{
+		std::string name;			// e.g., "outPos"
+		int			components;		// e.g., 3 for vec3
+	};
+
 	openGL_Quad () = default;
 	~openGL_Quad ();
 
@@ -22,8 +28,15 @@ public:
 
 	// Set the vertices of the quad
 	void setVertices ( const std::array<vertex, 4>& vertexBuffer );
-	void setPointSprites ( std::span<const float> pointSpriteData, int pointSpriteStride );
 	void draw ();
+
+	// Transform feedback for particle systems
+	void setFeedbackData ( std::span<const float> data, std::span<const feedbackVarying> layout );
+	void bindForUpdate ();
+	void bindForRender ();
+	void swapFeedbackBuffers ();
+
+	int getParticleCount () const { return particleCount; }
 
 	// Performance measurement
 	void beginMeasurement ();
@@ -31,6 +44,11 @@ public:
 	float getElapsedTimeMs () const { return elapsedTimeMs; }
 
 private:
+	void safeDeleteBuffers ( GLuint& buffer );
+	void safeDeleteVAO ( GLuint& vao );
+	void safeDeleteTFO ( GLuint& tfo );
+	void safeDeleteQuery ( GLuint& query );
+
 	juce::OpenGLContext*	ownerContext = nullptr;
 
 	// Performance measurement
@@ -45,11 +63,21 @@ private:
 	GLuint		quadIBO = 0;
 	std::array<unsigned int, 4>		indexBuffer = { 0, 1, 3, 2 };
 
-	// Instance data in case we want to use point-sprites
-	GLuint	instanceVAO = 0;
-	GLuint	instanceVBO = 0;
-	std::span<const float>	pointSpriteData;
-	int		pointSpriteStride = 0;
+	// Transform feedback housekeeping
+	bool	isFeedbackMode = false;
+	int		particleCount = 0;
+	int		readIdx = 0;
+	int		writeIdx = 1;
+
+	GLuint	tfo[ 2 ] = { 0, 0 }; // Transform Feedback Objects
+	GLuint	tfVBO[ 2 ] = { 0, 0 };
+	GLuint	tfVAO[ 2 ] = { 0, 0 };
+
+	std::vector<float>				pendingData;
+	std::vector<feedbackVarying>	pendingLayout;
+
+	void releaseFeedback ();
+	void setupFeedbackBuffers ( const int count, const float* data, std::span<const feedbackVarying> varyings );
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR ( openGL_Quad )
 };

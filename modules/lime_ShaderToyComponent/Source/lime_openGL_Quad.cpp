@@ -20,31 +20,14 @@ void openGL_Quad::release ()
 	if ( ! ownerContext )
 		return;
 
-	auto&	ogl = ownerContext->extensions;
+	safeDeleteQuery ( queryID[ 0 ] );
+	safeDeleteQuery ( queryID[ 1 ] );
 
-	juce::gl::glDeleteQueries ( 2, &queryID[ 0 ] );
-	queryID[ 0 ] = queryID[ 1 ] = 0;
-
-	auto deleteBuffersSafe = [ &ogl ] ( GLuint& buffer )
-	{
-		if ( buffer )
-			ogl.glDeleteBuffers ( 1, &buffer );
-		buffer = 0;
-	};
-
-	auto safeDeleteVAO = [ &ogl ] ( GLuint& vao )
-	{
-		if ( vao )
-			ogl.glDeleteVertexArrays ( 1, &vao );
-		vao = 0;
-	};
-
-	deleteBuffersSafe ( quadVBO );
-	deleteBuffersSafe ( quadIBO );
+	safeDeleteBuffers ( quadVBO );
+	safeDeleteBuffers ( quadIBO );
 	safeDeleteVAO ( quadVAO );
 
-	safeDeleteVAO ( instanceVAO );
-	deleteBuffersSafe ( instanceVBO );
+	releaseFeedback ();
 }
 //-----------------------------------------------------------------------------
 
@@ -57,7 +40,7 @@ void openGL_Quad::newContext ()
 
 	auto&	ogl = ownerContext->extensions;
 
-	if ( pointSpriteData.empty () )
+	if ( pendingData.empty () )
 	{
 		ogl.glGenVertexArrays ( 1, &quadVAO );
 
@@ -71,18 +54,11 @@ void openGL_Quad::newContext ()
 	}
 	else
 	{
-		// Create the Point-Sprite VAO
-		ogl.glGenVertexArrays ( 1, &instanceVAO );
-		ogl.glBindVertexArray ( instanceVAO );
+		auto	totalCount = 0;
+		for ( const auto& v : pendingLayout )
+			totalCount += v.components;
 
-		// Create and bind the Instance VBO
-		ogl.glGenBuffers ( 1, &instanceVBO );
-		ogl.glBindBuffer ( juce::gl::GL_ARRAY_BUFFER, instanceVBO );
-
-		// Map location 0 to our instance data
-		ogl.glEnableVertexAttribArray ( 0 );
-
-		ogl.glBindVertexArray ( 0 );
+		setupFeedbackBuffers ( pendingData.size () / totalCount, pendingData.data (), pendingLayout );
 	}
 }
 //-----------------------------------------------------------------------------
@@ -98,18 +74,23 @@ void openGL_Quad::setVertices ( const std::array<vertex, 4>& vertexBuffer )
 }
 //-----------------------------------------------------------------------------
 
-void openGL_Quad::setPointSprites ( std::span<const float> _instanceData, int _instanceStride )
-{
-	pointSpriteData = _instanceData;
-	pointSpriteStride = _instanceStride;
-}
-//-----------------------------------------------------------------------------
-
 void openGL_Quad::draw ()
 {
 	auto& ogl = ownerContext->extensions;
 
-	if ( pointSpriteData.empty () )
+	if ( isFeedbackMode )
+	{
+		juce::gl::glEnable ( juce::gl::GL_PROGRAM_POINT_SIZE );
+
+		ogl.glBindVertexArray ( tfVAO[ readIdx ] );
+
+		juce::gl::glDrawArrays ( juce::gl::GL_POINTS, 0, particleCount );
+
+		ogl.glBindVertexArray ( 0 );
+
+		juce::gl::glDisable ( juce::gl::GL_PROGRAM_POINT_SIZE );
+	}
+	else
 	{
 		ogl.glBindVertexArray ( quadVAO );
 
@@ -129,29 +110,103 @@ void openGL_Quad::draw ()
 		ogl.glBindBuffer ( juce::gl::GL_ARRAY_BUFFER, 0 );
 		ogl.glBindBuffer ( juce::gl::GL_ELEMENT_ARRAY_BUFFER, 0 );
 	}
-	else
+}
+//-----------------------------------------------------------------------------
+
+void openGL_Quad::releaseFeedback ()
+{
+	if ( ! ownerContext )
+		return;
+
+	// Ensure we are on the message thread/GL thread as per JUCE requirements
+	safeDeleteBuffers ( tfVBO[ 0 ] );
+	safeDeleteBuffers ( tfVBO[ 1 ] );
+
+	safeDeleteVAO ( tfVAO[ 0 ] );
+	safeDeleteVAO ( tfVAO[ 1 ] );
+
+	safeDeleteTFO ( tfo[ 0 ] );
+	safeDeleteTFO ( tfo[ 1 ] );
+
+	isFeedbackMode = false;
+	particleCount = 0;
+	readIdx = 0;
+	writeIdx = 1;
+}
+//-----------------------------------------------------------------------------
+
+void openGL_Quad::setFeedbackData ( std::span<const float> data, std::span<const feedbackVarying> layout )
+{
+	pendingData.assign ( data.begin (), data.end () );
+	pendingLayout.assign ( layout.begin (), layout.end () );
+}
+//-----------------------------------------------------------------------------
+
+void openGL_Quad::setupFeedbackBuffers ( const int count, const float* data, std::span<const feedbackVarying> varyings )
+{
+	releaseFeedback (); // Clean up existing buffers if any
+
+	isFeedbackMode = true;
+	particleCount = count;
+
+	auto	totalStride = 0;
+	for ( const auto& v : varyings )
+		totalStride += v.components;
+
+	juce::gl::glGenBuffers ( 2, tfVBO );
+	juce::gl::glGenVertexArrays ( 2, tfVAO );
+	juce::gl::glGenTransformFeedbacks ( 2, tfo );
+
+	for ( auto i = 0; i < 2; ++i )
 	{
-		juce::gl::glEnable ( juce::gl::GL_PROGRAM_POINT_SIZE );
-		ogl.glBindVertexArray ( instanceVAO );
+		// Initialize VAOs (how to read the data)
+		juce::gl::glBindVertexArray ( tfVAO[ i ] );
 
-		// Ensure location 1 (UV) from the Quad pass is disabled for points
-		ogl.glDisableVertexAttribArray ( 1 );
+		// Initialize VBOs with your starting data
+		juce::gl::glBindBuffer ( juce::gl::GL_ARRAY_BUFFER, tfVBO[ i ] );
+		juce::gl::glBufferData ( juce::gl::GL_ARRAY_BUFFER, totalStride * count * sizeof ( float ), data, juce::gl::GL_STREAM_DRAW );
 
-		// Upload the generic span data
-		ogl.glBindBuffer ( juce::gl::GL_ARRAY_BUFFER, instanceVBO );
-		ogl.glBufferData ( juce::gl::GL_ARRAY_BUFFER, pointSpriteData.size_bytes (), pointSpriteData.data (), juce::gl::GL_STREAM_DRAW );
+		auto	offset = 0;
+		for ( auto loc = 0; loc < int ( varyings.size () ); ++loc )
+		{
+			const auto	components = varyings[ loc ].components;
 
-		// Map the generic stride to location 0
-		ogl.glEnableVertexAttribArray ( 0 );
-		ogl.glVertexAttribPointer ( 0, pointSpriteStride, juce::gl::GL_FLOAT, juce::gl::GL_FALSE, sizeof ( float ) * pointSpriteStride, nullptr );
+			juce::gl::glEnableVertexAttribArray ( loc );
+			juce::gl::glVertexAttribPointer ( loc, components, juce::gl::GL_FLOAT, juce::gl::GL_FALSE, totalStride * sizeof ( float ), reinterpret_cast<const void*> ( offset ) );
 
-		// Draw all points in one go
-		juce::gl::glDrawArrays ( juce::gl::GL_POINTS, 0, (GLsizei)( pointSpriteData.size () / pointSpriteStride ) );
+			offset += components * sizeof ( float );
+		}
 
-		ogl.glBindVertexArray ( 0 );
-		ogl.glBindBuffer ( juce::gl::GL_ARRAY_BUFFER, 0 );
-		juce::gl::glDisable ( juce::gl::GL_PROGRAM_POINT_SIZE );
+		// Initialize TFOs (where to write the data)
+		juce::gl::glBindTransformFeedback ( juce::gl::GL_TRANSFORM_FEEDBACK, tfo[ i ] );
+		juce::gl::glBindBufferBase ( juce::gl::GL_TRANSFORM_FEEDBACK_BUFFER, 0, tfVBO[ i ] );
 	}
+
+	juce::gl::glBindVertexArray ( 0 );
+	juce::gl::glBindTransformFeedback ( juce::gl::GL_TRANSFORM_FEEDBACK, 0 );
+}
+//-----------------------------------------------------------------------------
+
+void openGL_Quad::bindForUpdate ()
+{
+	juce::gl::glBindBuffer ( juce::gl::GL_ARRAY_BUFFER, 0 );
+
+	juce::gl::glBindVertexArray ( tfVAO[ readIdx ] );
+	juce::gl::glBindTransformFeedback ( juce::gl::GL_TRANSFORM_FEEDBACK, tfo[ writeIdx ] );
+	juce::gl::glBindBufferBase ( juce::gl::GL_TRANSFORM_FEEDBACK_BUFFER, 0, tfVBO[ writeIdx ] );
+}
+//-----------------------------------------------------------------------------
+
+void openGL_Quad::bindForRender ()
+{
+	juce::gl::glBindVertexArray ( tfVAO[ readIdx ] );
+	juce::gl::glBindTransformFeedback ( juce::gl::GL_TRANSFORM_FEEDBACK, 0 );
+}
+//-----------------------------------------------------------------------------
+
+void openGL_Quad::swapFeedbackBuffers ()
+{
+	std::swap ( readIdx, writeIdx );
 }
 //-----------------------------------------------------------------------------
 
@@ -172,6 +227,34 @@ void openGL_Quad::endMeasurement ()
 		juce::gl::glGetQueryObjectui64v ( queryID[ queryIndex ], juce::gl::GL_QUERY_RESULT, &elapsedTime );
 		elapsedTimeMs = float ( double ( elapsedTime ) / 1000000.0 );
 	}
+}
+//-----------------------------------------------------------------------------
+
+void openGL_Quad::safeDeleteBuffers ( GLuint& buffer )
+{
+	juce::gl::glDeleteBuffers ( 1, &buffer );
+	buffer = 0;
+}
+//-----------------------------------------------------------------------------
+
+void openGL_Quad::safeDeleteVAO ( GLuint& vao )
+{
+	juce::gl::glDeleteVertexArrays ( 1, &vao );
+	vao = 0;
+}
+//-----------------------------------------------------------------------------
+
+void openGL_Quad::safeDeleteTFO ( GLuint& tfo )
+{
+	juce::gl::glDeleteTransformFeedbacks ( 1, &tfo );
+	tfo = 0;
+}
+//-----------------------------------------------------------------------------
+
+void openGL_Quad::safeDeleteQuery ( GLuint& query )
+{
+	juce::gl::glDeleteQueries ( 1, &query );
+	query = 0;
 }
 //-----------------------------------------------------------------------------
 }
