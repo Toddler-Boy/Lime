@@ -10,6 +10,7 @@ namespace lime
 shaderTarget::shaderTarget ( juce::OpenGLContext& oglContext, const juce::String& _name )
 	: openGLContext ( oglContext )
 	, name ( _name )
+	, file ( name )
 {
 }
 //-----------------------------------------------------------------------------
@@ -29,6 +30,7 @@ void shaderTarget::losingContext ()
 
 	glQuad.release ();
 
+	updateProgram.reset ();
 	renderProgram.reset ();
 }
 //-----------------------------------------------------------------------------
@@ -403,6 +405,12 @@ void shaderTarget::setBufferSizePixelsScaled ( const int w, const int h )
 void shaderTarget::setName ( const juce::String& _name )
 {
 	name = _name;
+}
+//-----------------------------------------------------------------------------
+
+void shaderTarget::setFile ( const juce::String& _file )
+{
+	file = _file;
 }
 //-----------------------------------------------------------------------------
 

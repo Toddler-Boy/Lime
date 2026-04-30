@@ -41,6 +41,9 @@ public:
 	void setName ( const juce::String& name );
 	juce::String& getName () { return name; }
 
+	void setFile ( const juce::String& file );
+	juce::String& getFile () { return file; }
+
 	void setEnabled ( const bool _enabled )		{ enabled = _enabled;	}
 
 	void setAutoSize ( const bool _autoSize )	{ autoSize = _autoSize;	}
@@ -92,6 +95,7 @@ public:
 private:
 	juce::OpenGLContext&	openGLContext;
 	juce::String			name;
+	juce::String			file;
 
 	openGL_Quad				glQuad;
 

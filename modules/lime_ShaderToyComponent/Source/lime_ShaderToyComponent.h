@@ -30,13 +30,13 @@ public:
 	void parsePipeline ();
 	void resetPipeline ();
 
-	shaderTarget* addTarget ( const juce::String& name );
+	shaderTarget* addTarget ( const juce::String& name, juce::String file = {} );
 	shaderTexture* addTexture ( const juce::String& name, std::function<void ( shaderTexture *dst, const juce::File& )> load = nullptr );
 
 	shaderTarget* getTarget ( const juce::String& name );
 	shaderTexture* getTexture ( const juce::String& name );
 
-	void setTargetShader ( shaderTarget* dst, const juce::String& name );
+	void setTargetShader ( shaderTarget* dst, const juce::String& name, juce::String file = {} );
 	void setTextureSource ( shaderTexture* dst, const juce::String& name );
 
 	void setBackgroundColor ( const juce::Colour col );

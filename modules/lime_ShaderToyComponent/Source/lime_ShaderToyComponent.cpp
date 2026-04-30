@@ -261,9 +261,13 @@ void ShaderToyComponent::parsePipeline ()
 		for ( auto index = 0; auto& shader : layersArray )
 		{
 			const auto	isLastTarget = ++index == layersArray.size ();
-			const auto	tgtName = ( shader.isString () ? shader : shader[ "shader" ] ).toString ();
+			auto	tgtFile = ( shader.isString () ? shader : shader[ "shader" ] ).toString ();
+			auto	tgtName = tgtFile;
 
-			auto	tgt = addTarget ( tgtName );
+			if ( shader.isObject () )
+				tgtName = shader.getProperty ( "name", tgtFile );
+
+			auto	tgt = addTarget ( tgtName, tgtFile );
 			tgt->setEnableBlend ( false );
 
 			// Defaults for shader
@@ -458,13 +462,16 @@ void ShaderToyComponent::resetPipeline ()
 }
 //-----------------------------------------------------------------------------
 
-shaderTarget* ShaderToyComponent::addTarget ( const juce::String& name )
+shaderTarget* ShaderToyComponent::addTarget ( const juce::String& name, juce::String file )
 {
 	jassert ( name.isNotEmpty () );
 
 	auto	tgt = std::make_unique<shaderTarget> ( openGLContext, name );
 
-	setTargetShader ( tgt.get (), name );
+	if ( file.isEmpty () )
+		file = name;
+
+	setTargetShader ( tgt.get (), name, file );
 
 	return ( targets.emplace_back ( std::move ( tgt ) ) ).get ();
 }
@@ -510,13 +517,17 @@ shaderTexture* ShaderToyComponent::getTexture ( const juce::String& name )
 }
 //-----------------------------------------------------------------------------
 
-void ShaderToyComponent::setTargetShader ( shaderTarget* dst, const juce::String& name )
+void ShaderToyComponent::setTargetShader ( shaderTarget* dst, const juce::String& name, juce::String file )
 {
 	jassert ( dst );
 	jassert ( name.isNotEmpty () );
 
 	dst->setName ( name );
-	dst->setShaders ( loadShader ( name ) );
+	if ( file.isEmpty () )
+		file = name;
+
+	dst->setFile ( file );
+	dst->setShaders ( loadShader ( file ) );
 }
 //-----------------------------------------------------------------------------
 
@@ -672,13 +683,13 @@ void ShaderToyComponent::fileChanged ( const juce::File& file, gin::FileSystemWa
 
 		// Check file matches
 		for ( const auto& dst : targets )
-			if ( findFile ( dst->getName () ) == file )
-				shadersToReload.insert ( dst->getName ().toStdString () );
+			if ( findFile ( dst->getFile () ) == file )
+				shadersToReload.insert ( dst->getFile ().toStdString () );
 
 		// Reload shaders
 		for ( auto& shader : targets )
-			if ( shadersToReload.contains ( shader->getName ().toStdString () ) )
-				shader->setShaders ( loadShader ( shader->getName () ) );
+			if ( shadersToReload.contains ( shader->getFile ().toStdString () ) )
+				shader->setShaders ( loadShader ( shader->getFile () ) );
 	}
 
 	// Reload textures
