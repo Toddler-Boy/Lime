@@ -118,6 +118,7 @@ private:
 	void updateUI ( const bool childrenVisible, const bool cursorVisible );
 	void handleGlobalMouseMove ( const juce::MouseEvent& e );
 	void handleGlobalMouseUp ( const juce::MouseEvent& e );
+	std::pair<bool, bool> getUIVisibility ( const juce::Point<int> screenPos );
 	void processStateAt ( const juce::Point<int> screenPos );
 
 	juce::Point<int>	lastMouseScreenPos = { -1000, -1000 };

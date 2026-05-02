@@ -797,21 +797,28 @@ void ShaderToyComponent::handleGlobalMouseMove ( const juce::MouseEvent& e )
 
 void ShaderToyComponent::handleGlobalMouseUp ( const juce::MouseEvent& e )
 {
-	auto	screenPos = e.getScreenPosition ();
-	auto	isOverThis = getScreenBounds ().contains ( screenPos );
+	const auto [ isOverChild, isOverThis ] = getUIVisibility ( e.getScreenPosition () );
 
-	if ( isOverThis )
+	if ( ! isOverChild && isOverThis && ! isTimerRunning () )
 		startTimer ( idleTimeout );
+}
+//-----------------------------------------------------------------------------
+
+std::pair<bool, bool> ShaderToyComponent::getUIVisibility ( const juce::Point<int> screenPos )
+{
+	auto	localPos = getLocalPoint ( nullptr, screenPos );
+
+	const auto* hit = getComponentAt ( localPos );
+	const auto	isOverChild = ( hit != nullptr && hit != this );
+	const auto	isOverThis = getLocalBounds ().contains ( localPos );
+
+	return { isOverChild, isOverThis };
 }
 //-----------------------------------------------------------------------------
 
 void ShaderToyComponent::processStateAt ( const juce::Point<int> screenPos )
 {
-	const auto	localPos = getLocalPoint ( nullptr, screenPos );
-
-	const auto* hit = getComponentAt ( localPos );
-	const auto	isOverThis = getLocalBounds ().contains ( localPos );
-	const auto	isOverChild = ( hit != nullptr && hit != this );
+	const auto [ isOverChild, isOverThis ] = getUIVisibility ( screenPos );
 
 	if ( isOverChild )
 	{
