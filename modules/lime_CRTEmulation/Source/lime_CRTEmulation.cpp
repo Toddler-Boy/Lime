@@ -240,7 +240,7 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 			};
 
 			juce::Random				random;
-			std::vector<DustParticle>	dustData ( 400 );
+			std::vector<DustParticle>	dustData ( 300 );
 
 			for ( auto& p : dustData )
 			{
