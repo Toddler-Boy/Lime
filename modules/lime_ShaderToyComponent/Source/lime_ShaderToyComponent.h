@@ -121,6 +121,7 @@ private:
 	void processStateAt ( const juce::Point<int> screenPos );
 
 	juce::Point<int>	lastMouseScreenPos = { -1000, -1000 };
+	juce::Point<int>	mouseHideScreenPos = { -2000, -2000 };
 	bool				curChildrenVisible = true;
 	bool				curCursorVisible = true;
 	int					idleTimeout = 0;

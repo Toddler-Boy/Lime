@@ -782,6 +782,10 @@ void ShaderToyComponent::handleGlobalMouseMove ( const juce::MouseEvent& e )
 	if ( screenPos == lastMouseScreenPos )
 		return;
 
+	if ( ! curCursorVisible )
+		if ( screenPos.getDistanceFrom ( mouseHideScreenPos ) < 15 )
+			return;
+
 	lastMouseScreenPos = screenPos;
 
 	if ( e.mods.isAnyMouseButtonDown () )
@@ -841,6 +845,9 @@ void ShaderToyComponent::updateUI ( const bool childrenVisible, const bool curso
 {
 	if ( childrenVisible == curChildrenVisible && cursorVisible == curCursorVisible )
 		return;
+
+	if ( curCursorVisible && ! cursorVisible )
+		mouseHideScreenPos = juce::Desktop::getMousePosition ();
 
 	curChildrenVisible = childrenVisible;
 	curCursorVisible = cursorVisible;
