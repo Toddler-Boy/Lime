@@ -21,6 +21,9 @@ public:
 	void openGLContextClosing () override;
 	void renderOpenGL () override;
 
+	// You should override this if you want to do something before the shaders is rendered
+	virtual void renderFrame () {}
+
 	// juce::Component
 	void resized () override;
 	void paint ( juce::Graphics& /*g*/ ) override {}
@@ -57,8 +60,9 @@ public:
 
 	// Helpers
 	void enableRenderTimeMeasurement ( const bool enable );
+	void enableRenderTimeDisplay ( const bool enable );
 
-	[[ nodiscard ]] double getDeltaTime ();
+	[[ nodiscard ]] double getDeltaTime () const { return lastDeltaTime.load (); }
 	[[ nodiscard ]] double getLastGpuTimeMS () const { return lastGpuTimeMS.load (); }
 
 	// gin::FileSystemWatcher::Listener
@@ -69,12 +73,15 @@ private:
 	GLfloat		backgroundColor[ 4 ] = { 0.0f, 0.0f, 0.0f, 1.0f };
 
 	std::atomic<bool>	measureRenderTime = false;
+	std::atomic<bool>	displayRenderTime = false;
 	GLuint				renderTimeQuery[ 2 ] = { 0, 0 };
 	int					queryIndex = 0;
 	std::atomic<double>	lastGpuTimeMS = 0.0;
 
 	// Helpers
 	std::chrono::steady_clock::time_point	lastTime;
+	std::atomic<double>	lastDeltaTime = 0.0;
+	void calcDeltaTime ();
 
 	// Frame
 	void*				captureAddress = nullptr;
@@ -92,6 +99,8 @@ private:
 
 protected:
 	juce::OpenGLContext		openGLContext;
+
+	shaderTarget			frameTimeTarget { openGLContext, "/frameTime" };
 
 	// gin::FileSystemWatcher
 	gin::FileSystemWatcher	fsWatcher;

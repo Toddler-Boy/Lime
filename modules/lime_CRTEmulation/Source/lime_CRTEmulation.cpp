@@ -303,7 +303,7 @@ void CRTEmulation::resized ()
 }
 //-----------------------------------------------------------------------------
 
-void CRTEmulation::renderOpenGL ()
+void CRTEmulation::renderFrame ()
 {
 	// Get deltaTime
 	const auto	deltaTime = getDeltaTime ();
@@ -380,8 +380,6 @@ void CRTEmulation::renderOpenGL ()
 
 		crtTarget->setUniform_f ( "crtOverscan", { currentOverscan, yOver } );
 	}
-
-	ShaderToyComponent::renderOpenGL ();
 }
 //-----------------------------------------------------------------------------
 

@@ -40,6 +40,9 @@ ShaderToyComponent::ShaderToyComponent ( const bool canHaveChildren, const int _
 	openGLContext.setRenderer ( this );
 	openGLContext.attachTo ( *this );
 	openGLContext.setSwapInterval ( 1 );
+
+	// Add fragment shader to frameTimeTarget
+	frameTimeTarget.setShaders ( "#version 410 core\n#ifdef FRAGMENT\nout vec4 fragColor;\nvoid main () { fragColor = vec4 ( 0.57, 0.98, 0.53, 1.0 ); }\n#endif" );
 }
 //-----------------------------------------------------------------------------
 
@@ -77,6 +80,8 @@ void ShaderToyComponent::newOpenGLContextCreated ()
 	for ( auto& tgt : targets )
 		tgt->newContext ();
 
+	frameTimeTarget.newContext ();
+
 	juce::gl::glGenQueries ( 2, &renderTimeQuery[ 0 ] );
 
 	for ( auto i = 0; i < std::ssize ( renderTimeQuery ); ++i )
@@ -101,11 +106,16 @@ void ShaderToyComponent::openGLContextClosing ()
 
 	for ( auto& tgt : targets )
 		tgt.get ()->losingContext ();
+
+	frameTimeTarget.losingContext ();
 }
 //-----------------------------------------------------------------------------
 
 void ShaderToyComponent::renderOpenGL ()
 {
+	calcDeltaTime ();
+	renderFrame ();
+
 	jassert ( juce::OpenGLHelpers::isContextActive () );
 
 	// You should at least have one quad on the screen
@@ -160,7 +170,18 @@ void ShaderToyComponent::renderOpenGL ()
 		tup.get ()->render ( viewportWidth, viewportHeight, renderingScale );
 
 	if ( shouldMeassure )
+	{
 		juce::gl::glEndQuery ( juce::gl::GL_TIME_ELAPSED );
+
+		if ( displayRenderTime.load () )
+		{
+			const auto	deltaTime = getDeltaTime ();
+			const auto	loadPercentage = lastGpuTimeMS / ( deltaTime * 1000.0 );
+
+			frameTimeTarget.setSize ( 4, int ( viewportHeight * loadPercentage ) );
+			frameTimeTarget.render ( viewportWidth, viewportHeight, renderingScale );
+		}
+	}
 
 	if ( captureAddress )
 		juce::gl::glReadPixels ( 0, 0,
@@ -627,13 +648,19 @@ void ShaderToyComponent::enableRenderTimeMeasurement ( const bool enable )
 }
 //-----------------------------------------------------------------------------
 
-double ShaderToyComponent::getDeltaTime ()
+void ShaderToyComponent::enableRenderTimeDisplay ( const bool enable )
+{
+	displayRenderTime = enable;
+}
+//-----------------------------------------------------------------------------
+
+void ShaderToyComponent::calcDeltaTime ()
 {
 	const auto	currentTime = std::chrono::steady_clock::now ();
 	const std::chrono::duration<double>	_deltaTime = currentTime - lastTime;
 	lastTime = currentTime;
 
-	return std::min ( _deltaTime.count (), 0.1 );
+	lastDeltaTime.store ( std::min ( _deltaTime.count (), 0.1 ) );
 }
 //-----------------------------------------------------------------------------
 

@@ -96,7 +96,7 @@ public:
 	void resized () override;
 
 	// ShaderToyComponent
-	void renderOpenGL () override;
+	void renderFrame () override;
 
 	// this
 	void setRoot ( const juce::File& _root );
