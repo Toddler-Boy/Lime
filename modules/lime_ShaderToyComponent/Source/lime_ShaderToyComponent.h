@@ -6,10 +6,14 @@ namespace lime
 {
 //-----------------------------------------------------------------------------
 
-class ShaderToyComponent : public juce::Component,	private juce::OpenGLRenderer, public gin::FileSystemWatcher::Listener
+class ShaderToyComponent
+	: public juce::Component
+	, private juce::OpenGLRenderer
+	, public gin::FileSystemWatcher::Listener
+	, private juce::Timer
 {
 public:
-	ShaderToyComponent ( const bool canHaveChildren = false );
+	ShaderToyComponent ( const bool canHaveChildren = false, const int idleTimeout = 0 );
 	~ShaderToyComponent () override;
 
 	// juce::OpenGLRenderer
@@ -106,6 +110,32 @@ private:
 	// Helpers
 	//
 	juce::String loadShader ( juce::String name );
+
+	//
+	// Hide mouse and children after timeout
+	//
+	void timerCallback () override;
+	void updateUI ( const bool childrenVisible, const bool cursorVisible );
+	void handleGlobalMouseMove ( const juce::MouseEvent& e );
+	void handleGlobalMouseUp ( const juce::MouseEvent& e );
+	void processStateAt ( const juce::Point<int> screenPos );
+
+	juce::Point<int>	lastMouseScreenPos = { -1000, -1000 };
+	bool				curChildrenVisible = true;
+	bool				curCursorVisible = true;
+	int					idleTimeout = 0;
+
+	// A simple helper to avoid the inheritance ambiguity
+	struct HelperListener : public juce::MouseListener
+	{
+		std::function<void ( const juce::MouseEvent& )> onMouseMove;
+		std::function<void ( const juce::MouseEvent& )> onMouseUp;
+
+		void mouseMove ( const juce::MouseEvent& e ) override { if ( onMouseMove ) onMouseMove ( e ); }
+		void mouseDrag ( const juce::MouseEvent& e ) override { if ( onMouseMove ) onMouseMove ( e ); }
+		void mouseUp ( const juce::MouseEvent& e ) override { if ( onMouseUp ) onMouseUp ( e ); }
+
+	} globalListener;
 };
 //-----------------------------------------------------------------------------
 }

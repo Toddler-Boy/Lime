@@ -5,8 +5,8 @@
 namespace lime
 {
 
-CRTEmulation::CRTEmulation ( const bool canHaveChildren, const juce::File& _root, const resolutions& _res )
-	: ShaderToyComponent ( canHaveChildren )
+CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, const juce::File& _root, const resolutions& _res )
+	: ShaderToyComponent ( canHaveChildren, idleTimeout )
 	, juce::Thread ( "CRTEmulation webcam thread" )
 	, res ( _res )
 	, indexBuffer ( 1, 384, 272 )

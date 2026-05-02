@@ -18,7 +18,7 @@ public:
 		int	scaledHeight;
 	};
 
-	CRTEmulation ( const bool canHaveChildren, const juce::File& root, const resolutions& res );
+	CRTEmulation ( const bool canHaveChildren, const int idleTimeout, const juce::File& root, const resolutions& res );
 	~CRTEmulation () override;
 
 	struct settings

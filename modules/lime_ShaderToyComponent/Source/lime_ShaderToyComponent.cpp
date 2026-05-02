@@ -7,13 +7,22 @@ namespace lime
 {
 //-----------------------------------------------------------------------------
 
-ShaderToyComponent::ShaderToyComponent ( const bool canHaveChildren )
+ShaderToyComponent::ShaderToyComponent ( const bool canHaveChildren, const int _idleTimeout )
+	: idleTimeout ( _idleTimeout )
 {
-	fsWatcher.addListener ( this );
-
 	setName ( "ShaderToyComponent" );
 	setOpaque ( true );
 
+	// Use a separate listener object to avoid inheritance ambiguity
+	globalListener.onMouseMove = [ this ] ( const juce::MouseEvent& e ) { handleGlobalMouseMove ( e ); };
+	globalListener.onMouseUp = [ this ] ( const juce::MouseEvent& e ) { handleGlobalMouseUp ( e ); };
+
+	// Register this separate object globally
+	if ( idleTimeout > 0 )
+		juce::Desktop::getInstance ().addGlobalMouseListener ( &globalListener );
+
+	// File system watcher to reload shaders and textures on change
+	fsWatcher.addListener ( this );
 	fsWatcher.coalesceEvents ( 50 );
 
 	#if JUCE_MAC
@@ -36,6 +45,9 @@ ShaderToyComponent::ShaderToyComponent ( const bool canHaveChildren )
 
 ShaderToyComponent::~ShaderToyComponent ()
 {
+	if ( idleTimeout > 0 )
+		juce::Desktop::getInstance ().removeGlobalMouseListener ( &globalListener );
+
 	openGLContext.detach ();
 }
 //-----------------------------------------------------------------------------
@@ -760,6 +772,83 @@ juce::String ShaderToyComponent::loadShader ( juce::String name )
 	}
 
 	return shaderStr;
+}
+//-----------------------------------------------------------------------------
+
+void ShaderToyComponent::handleGlobalMouseMove ( const juce::MouseEvent& e )
+{
+	const auto	screenPos = e.getScreenPosition ();
+
+	if ( screenPos == lastMouseScreenPos )
+		return;
+
+	lastMouseScreenPos = screenPos;
+
+	if ( e.mods.isAnyMouseButtonDown () )
+		return;
+
+	processStateAt ( screenPos );
+}
+//-----------------------------------------------------------------------------
+
+void ShaderToyComponent::handleGlobalMouseUp ( const juce::MouseEvent& e )
+{
+	auto	screenPos = e.getScreenPosition ();
+	auto	isOverThis = getScreenBounds ().contains ( screenPos );
+
+	if ( isOverThis )
+		startTimer ( idleTimeout );
+}
+//-----------------------------------------------------------------------------
+
+void ShaderToyComponent::processStateAt ( const juce::Point<int> screenPos )
+{
+	const auto	localPos = getLocalPoint ( nullptr, screenPos );
+
+	const auto* hit = getComponentAt ( localPos );
+	const auto	isOverThis = getLocalBounds ().contains ( localPos );
+	const auto	isOverChild = ( hit != nullptr && hit != this );
+
+	if ( isOverChild )
+	{
+		stopTimer ();
+		updateUI ( true, true );
+	}
+	else if ( isOverThis )
+	{
+		updateUI ( true, true );
+		startTimer ( idleTimeout );
+	}
+	else
+	{
+		if ( ! isTimerRunning () )
+			startTimer ( idleTimeout );
+	}
+}
+//-----------------------------------------------------------------------------
+
+void ShaderToyComponent::timerCallback ()
+{
+	stopTimer ();
+
+	auto	isCurrentlyOverUs = getScreenBounds ().contains ( juce::Desktop::getMousePosition () );
+
+	updateUI ( false, ! isCurrentlyOverUs );
+}
+//-----------------------------------------------------------------------------
+
+void ShaderToyComponent::updateUI ( const bool childrenVisible, const bool cursorVisible )
+{
+	if ( childrenVisible == curChildrenVisible && cursorVisible == curCursorVisible )
+		return;
+
+	curChildrenVisible = childrenVisible;
+	curCursorVisible = cursorVisible;
+
+	for ( auto* child : getChildren () )
+		child->setVisible ( childrenVisible );
+
+	setMouseCursor ( cursorVisible ? juce::MouseCursor::NormalCursor : juce::MouseCursor::NoCursor );
 }
 //-----------------------------------------------------------------------------
 
