@@ -2,8 +2,6 @@
 
 #include <chrono>
 
-#include "lime_CRT_DustParticles.h"
-
 //-----------------------------------------------------------------------------
 
 namespace lime
@@ -239,7 +237,6 @@ private:
 	//
 	// Dust particles
 	//
-	CRT_DustParticles	dustParticles;
 	shaderTarget*		dustTarget;
 
 	//

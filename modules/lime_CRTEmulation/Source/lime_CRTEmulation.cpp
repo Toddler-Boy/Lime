@@ -10,7 +10,6 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const juce::File& _root
 	, juce::Thread ( "CRTEmulation webcam thread" )
 	, res ( _res )
 	, indexBuffer ( 1, 384, 272 )
-	, dustParticles ( 300 )
 {
 	setName ( "lime::CRTEmulation" );
 	setOpaque ( true );
@@ -232,12 +231,31 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const juce::File& _root
 		dustTarget->setTargetBuffer ( overlayDustTexture );
 		dustTarget->setTargetBackgroundColor ( juce::Colours::black );
 
-		std::vector<openGL_Quad::feedbackVarying> feedbackVars =
+		// Initialize feedback buffer with random particle positions and zero velocity
 		{
-			{ "outPos", 3 },
-			{ "outVel", 3 },
-		};
-		dustTarget->initFeedbackBuffers ( std::span { dustParticles.getParticles () }, feedbackVars );
+			struct DustParticle
+			{
+				float	px, py, pz;
+				float	vx = 0.0f, vy = 0.0f, vz = 0.0f;
+			};
+
+			juce::Random				random;
+			std::vector<DustParticle>	dustData ( 400 );
+
+			for ( auto& p : dustData )
+			{
+				p.px = random.nextFloat () * 2.0f - 1.0f;
+				p.py = random.nextFloat () * 2.0f - 1.0f;
+				p.pz = random.nextFloat () * 2.0f - 1.0f;
+			}
+
+			std::vector<openGL_Quad::feedbackVarying> feedbackVars =
+			{
+				{ "outPos", 3 },
+				{ "outVel", 3 },
+			};
+			dustTarget->initFeedbackBuffers ( std::span { dustData.data (), dustData.size () }, feedbackVars );
+		}
 
 		overlayDustTarget = addTarget ( "overlay-dust-layer.glsl" );
 		overlayDustTarget->setEnableBlend ( true, false, lime::shaderTarget::BlendMode::add );
