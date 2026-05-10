@@ -26,6 +26,7 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	lumaChromaPalette = addTexture ( "/YUV/YIQ palette" );
 	lumaChromaSourceTexture = addTexture ( "/YUV/YIQ image" );
 	crtSourceTexture = addTexture ( "/RGB image" );
+	crtSourceTexture->generateMipmaps = true;
 	crtProcessedTexture[ 0 ] = addTexture ( "/CRT image1" );
 	crtProcessedTexture[ 1 ] = addTexture ( "/CRT image2" );
 
