@@ -42,7 +42,70 @@ ShaderToyComponent::ShaderToyComponent ( const bool canHaveChildren, const int _
 	openGLContext.setSwapInterval ( 1 );
 
 	// Add fragment shader to frameTimeTarget
-	frameTimeTarget.setShaders ( "#version 410 core\n#ifdef FRAGMENT\nout vec4 fragColor;\nvoid main () { fragColor = vec4 ( 0.57, 0.98, 0.53, 1.0 ); }\n#endif" );
+	frameTimeTarget.setShaders (
+R"(
+	uniform float iDelta;
+	uniform float iGPUTime;
+	uniform float iPercent;
+
+float DigitBin( const int x )
+{
+    const int digits[10] = int[](
+        480599,
+        139810,
+        476951,
+        476999,
+        350020,
+        464711,
+        464727,
+        476228,
+        481111,
+        481095
+    );
+
+    return ( x >= 0 && x <= 9 ) ? float ( digits[ x ] ) : 0.0;
+}
+
+float printValue( vec2 vStringCoords, float fValue, float fMaxDigits, float fDecimalPlaces )
+{
+    if ((vStringCoords.y < 0.0) || (vStringCoords.y >= 1.0)) return 0.0;
+
+    bool bNeg = ( fValue < 0.0 );
+	fValue = abs(fValue);
+
+	float fLog10Value = log2(abs(fValue)) / log2(10.0);
+	float fBiggestIndex = max(floor(fLog10Value), 0.0);
+	float fDigitIndex = fMaxDigits - floor(vStringCoords.x);
+	float fCharBin = 0.0;
+	if(fDigitIndex > (-fDecimalPlaces - 1.01)) {
+		if(fDigitIndex > fBiggestIndex) {
+			if((bNeg) && (fDigitIndex < (fBiggestIndex+1.5))) fCharBin = 1792.0;
+		} else {
+			if(fDigitIndex == -1.0) {
+				if(fDecimalPlaces > 0.0) fCharBin = 2.0;
+			} else {
+                float fReducedRangeValue = fValue;
+                if(fDigitIndex < 0.0) { fReducedRangeValue = fract( fValue ); fDigitIndex += 1.0; }
+				float fDigitValue = (abs(fReducedRangeValue / (pow(10.0, fDigitIndex))));
+                fCharBin = DigitBin(int(floor(mod(fDigitValue, 10.0))));
+			}
+        }
+	}
+    return floor(mod((fCharBin / pow(2.0, floor(fract(vStringCoords.x) * 4.0) + (floor(vStringCoords.y * 5.0) * 4.0))), 2.0));
+}
+
+	void main ()
+	{
+		vec2	uv = fragCoord * 10.0;
+		float	text = 0.0;
+
+		text += printValue ( uv - vec2 ( 0.5, 4.5 ), iDelta, 2.0, 2.0 );
+		text += printValue ( uv - vec2 ( 0.5, 2.5 ), iGPUTime, 2.0, 2.0 );
+		text += printValue ( uv - vec2 ( 0.5, 0.5 ), iPercent, 2.0, 2.0 );
+
+		fragColor = vec4 ( text );
+	}
+)" );
 }
 //-----------------------------------------------------------------------------
 
@@ -176,9 +239,17 @@ void ShaderToyComponent::renderOpenGL ()
 		if ( displayRenderTime.load () )
 		{
 			const auto	deltaTime = getDeltaTime ();
-			const auto	loadPercentage = lastGpuTimeMS / ( deltaTime * 1000.0 );
 
-			frameTimeTarget.setSize ( 4, int ( viewportHeight * loadPercentage ) );
+			deltaTime_cur = std::lerp ( deltaTime_cur, deltaTime, 0.1 );
+			lastGpuTimeMS_cur = std::lerp ( lastGpuTimeMS_cur, lastGpuTimeMS, 0.1 );
+
+			const auto	loadPercentage = lastGpuTimeMS_cur / ( deltaTime_cur * 10.0 );
+
+			frameTimeTarget.setUniform_f ( "iDelta", float ( deltaTime_cur * 1000.0 ) );
+			frameTimeTarget.setUniform_f ( "iGPUTime", float ( lastGpuTimeMS_cur ) );
+			frameTimeTarget.setUniform_f ( "iPercent", float ( loadPercentage ) );
+
+			frameTimeTarget.setSize ( 100, 100 );
 			frameTimeTarget.render ( viewportWidth, viewportHeight, renderingScale );
 		}
 	}

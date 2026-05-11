@@ -78,6 +78,9 @@ private:
 	int					queryIndex = 0;
 	std::atomic<double>	lastGpuTimeMS = 0.0;
 
+	double				deltaTime_cur = 0.0;
+	double				lastGpuTimeMS_cur = 0.0;
+
 	// Helpers
 	std::chrono::steady_clock::time_point	lastTime;
 	std::atomic<double>	lastDeltaTime = 0.0;
