@@ -70,7 +70,7 @@
 		return NO;
 	}
 	_id			   = MIN(deviceID, (int)([devices count]) - 1);
-	_captureDevice = [devices objectAtIndex:_id];
+	_captureDevice = [[devices objectAtIndex:_id] retain];
 
 	// Setup the device.
 	NSError* err = nil;
@@ -132,7 +132,7 @@
 	[_captureDevice unlockForConfiguration];
 
 	// Then, the device is ready.
-	_captureDataIn								  = [AVCaptureDeviceInput deviceInputWithDevice:_captureDevice error:nil];
+	_captureDataIn								  = [[AVCaptureDeviceInput deviceInputWithDevice:_captureDevice error:nil] retain];
 	_captureDataOut								  = [[AVCaptureVideoDataOutput alloc] init];
 	_captureDataOut.alwaysDiscardsLateVideoFrames = YES;
 
