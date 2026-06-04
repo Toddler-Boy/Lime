@@ -220,11 +220,12 @@
 		const int wBuffer = (int)CVPixelBufferGetWidth(imgBuffer);
 		const int hBuffer = (int)CVPixelBufferGetHeight(imgBuffer);
 		if(wBuffer == _parent->width && hBuffer == _parent->height) {
-			unsigned char* baseBuffer = (unsigned char*)CVPixelBufferGetBaseAddress(imgBuffer);
+			unsigned char* yBase  = (unsigned char*)CVPixelBufferGetBaseAddressOfPlane(imgBuffer, 0);
+			unsigned char* uvBase = (unsigned char*)CVPixelBufferGetBaseAddressOfPlane(imgBuffer, 1);
 			int rowBytesY = (int)CVPixelBufferGetBytesPerRowOfPlane(imgBuffer, 0);
 			int rowBytesUV = (int)CVPixelBufferGetBytesPerRowOfPlane(imgBuffer, 1);
 
-			_parent->callback(_parent, baseBuffer, wBuffer, hBuffer, rowBytesY, rowBytesUV, pixFmt::NV12 );
+			_parent->callback(_parent, yBase, uvBase, wBuffer, hBuffer, rowBytesY, rowBytesUV, pixFmt::NV12 );
 		}
 		CVPixelBufferUnlockBaseAddress(imgBuffer, kCVPixelBufferLock_ReadOnly);
 	}

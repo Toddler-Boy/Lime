@@ -179,7 +179,7 @@ public:
 					)
 				{
 					// Transmit data to user
-					_parent->callback ( _parent, ptr, captureFormat.width, captureFormat.height, pitchY, pitchY, pixFmt::NV12 );
+					_parent->callback ( _parent, ptr, ptr + pitchY * captureFormat.height, captureFormat.width, captureFormat.height, pitchY, pitchY, pixFmt::NV12 );
 
 					// Unlock 2D buffer
 					buffer2_2d->Unlock2D ();

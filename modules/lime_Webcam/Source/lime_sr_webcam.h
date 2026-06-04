@@ -9,7 +9,7 @@ enum pixFmt : int
 	YUY2,
 };
 
-using sr_webcam_callback = void ( * )( sr_webcam_device* device, void* data, int width, int height, int strideY, int strideUV, pixFmt format );
+using sr_webcam_callback = void ( * )( sr_webcam_device* device, void* dataY, void* dataUV, int width, int height, int strideY, int strideUV, pixFmt format );
 
 bool sr_webcam_create ( sr_webcam_device** device, int deviceId );
 

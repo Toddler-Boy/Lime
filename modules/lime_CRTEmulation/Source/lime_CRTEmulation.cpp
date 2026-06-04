@@ -1024,7 +1024,7 @@ void CRTEmulation::addWebcamListener ()
 			return;
 		}
 
-		camera->onDataReceived = [ this ] ( uint8_t* data, int width, int height, int strideY, int strideUV, pixFmt format )
+		camera->onDataReceived = [ this ] ( uint8_t* dataY, uint8_t* dataUV, int width, int height, int strideY, int strideUV, pixFmt format )
 		{
 			if ( format == pixFmt::NV12 )
 			{
@@ -1039,30 +1039,28 @@ void CRTEmulation::addWebcamListener ()
 				{
 					if ( width == strideY )
 					{
-						std::memmove ( camImageNV12_Y.getData (), data, width * height );
+						std::memmove ( camImageNV12_Y.getData (), dataY, width * height );
 					}
 					else
 					{
 						// If stride is larger than width, we need to copy line by line
 						for ( auto y = 0; y < height; ++y )
-							std::memmove ( camImageNV12_Y.getLinePointer ( y ), data + y * strideY, width );
+							std::memmove ( camImageNV12_Y.getLinePointer ( y ), dataY + y * strideY, width );
 					}
 					webcamTextureNV12_Y->fromImage ( camImageNV12_Y, false );
 				}
 
 				// Upload UV as texture
 				{
-					const auto	uvDataStart = data + width * height;
-
 					if ( width == strideUV )
 					{
-						std::memmove ( camImageNV12_UV.getData (), uvDataStart, ( width / 2 ) * ( height / 2 ) * 2 );
+						std::memmove ( camImageNV12_UV.getData (), dataUV, ( width / 2 ) * ( height / 2 ) * 2 );
 					}
 					else
 					{
 						// If stride is larger than width, we need to copy line by line
 						for ( auto y = 0; y < height / 2; ++y )
-							std::memmove ( camImageNV12_UV.getLinePointer ( y ), uvDataStart + y * strideUV, width );
+							std::memmove ( camImageNV12_UV.getLinePointer ( y ), dataUV + y * strideUV, width );
 					}
 					webcamTextureNV12_UV->fromImage ( camImageNV12_UV, false );
 				}

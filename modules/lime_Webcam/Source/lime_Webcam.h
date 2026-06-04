@@ -22,10 +22,10 @@ public:
 
 	std::string& getError () { return error; }
 
-	std::function<void ( uint8_t*, int width, int height, int strideY, int stridUV, pixFmt format )>	onDataReceived;
+	std::function<void ( uint8_t* dataY, uint8_t* dataUV, int width, int height, int strideY, int strideUV, pixFmt format )>	onDataReceived;
 
 private:
-	static void callback ( sr_webcam_device* device, void* data, int width, int height, int strideY, int strideUV, pixFmt format );
+	static void callback ( sr_webcam_device* device, void* dataY, void* dataUV, int width, int height, int strideY, int strideUV, pixFmt format );
 
 	sr_webcam_device*	device = nullptr;
 	std::string			error;

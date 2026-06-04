@@ -69,7 +69,9 @@ void* _sr_webcam_callback_loop ( void* arg )
 			if ( errno != EIO )
 				return NULL;
 
-		stream->parent->callback ( stream->parent, (unsigned char*)stream->buffers[ buf.index ].start, stream->width, stream->height, stream->width, stream->width, stream->pixelformat == V4L2_PIX_FMT_NV12 ? pixFmt::NV12 : pixFmt::YUY2 );
+		auto*	bufStart = (unsigned char*)stream->buffers[ buf.index ].start;
+		auto*	uvStart = stream->pixelformat == V4L2_PIX_FMT_NV12 ? bufStart + stream->width * stream->height : nullptr;
+		stream->parent->callback ( stream->parent, bufStart, uvStart, stream->width, stream->height, stream->width, stream->width, stream->pixelformat == V4L2_PIX_FMT_NV12 ? pixFmt::NV12 : pixFmt::YUY2 );
 
 		_sr_webcam_wait_ioctl ( stream->fid, VIDIOC_QBUF, &buf );
 	}

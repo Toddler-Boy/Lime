@@ -34,10 +34,10 @@ void Webcam::stop ()
 }
 //-----------------------------------------------------------------------------
 
-void Webcam::callback ( sr_webcam_device* device, void* data, int width, int height, int strideY, int strideUV, pixFmt format )
+void Webcam::callback ( sr_webcam_device* device, void* dataY, void* dataUV, int width, int height, int strideY, int strideUV, pixFmt format )
 {
 	if ( auto stream = static_cast<Webcam*>( sr_webcam_get_user ( device ) ); stream->onDataReceived )
-		stream->onDataReceived ( (uint8_t*)data, width, height, strideY, strideUV, format );
+		stream->onDataReceived ( (uint8_t*)dataY, (uint8_t*)dataUV, width, height, strideY, strideUV, format );
 }
 //-----------------------------------------------------------------------------
 
