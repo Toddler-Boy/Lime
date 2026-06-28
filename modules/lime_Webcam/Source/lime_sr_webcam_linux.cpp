@@ -30,10 +30,53 @@ typedef struct {
 	int id;
 	int framerate;
 	__u32 pixelformat;
+	pixFmt colorTags;	// negotiated matrix/range bits, OR'd into each frame
 	_sr_webcam_buffer* buffers;
 	int buffersCount;
 	pthread_t thread;
 } _sr_webcam_v4lInfos;
+
+// Map the V4L2 colour-space tags negotiated on the format struct to our packed
+// pixFmt matrix/range bits. Matches the Windows/macOS rule: an absent or
+// unrecognised OS tag leaves the corresponding bits unset (= unknown), and we
+// never infer matrix or range from resolution.
+static pixFmt _sr_webcam_color_tags ( __u32 colorspace, __u32 ycbcr_enc, __u32 quantization )
+{
+	int tags = 0;
+
+	// Matrix: from ycbcr_enc; if DEFAULT, derive from colorspace, but only when
+	// colorspace itself is a real value (else leave the matrix unknown).
+	__u32 enc = ycbcr_enc;
+	if ( enc == V4L2_YCBCR_ENC_DEFAULT
+		 && colorspace != V4L2_COLORSPACE_DEFAULT
+		 && colorspace != V4L2_COLORSPACE_RAW )
+		enc = V4L2_MAP_YCBCR_ENC_DEFAULT ( colorspace );
+
+	if ( enc == V4L2_YCBCR_ENC_601 || enc == V4L2_YCBCR_ENC_XV601 )
+		tags |= matrixBT601;
+	else if ( enc == V4L2_YCBCR_ENC_709 || enc == V4L2_YCBCR_ENC_XV709 )
+		tags |= matrixBT709;
+	// else SMPTE240M / BT2020 / SYCC / unresolved DEFAULT -> matrix unknown.
+
+	// Range: from quantization. A DEFAULT value's meaning depends on colorspace
+	// and format; our format is always YCbCr (NV12/YUYV) so is_rgb_or_hsv=false,
+	// and the kernel rule reduces to "JPEG colorspace -> full, else limited".
+	// We only resolve DEFAULT when colorspace is a real value; if colorspace is
+	// itself DEFAULT/RAW the range is genuinely unresolvable -> leave unset.
+	__u32 quant = quantization;
+	if ( quant == V4L2_QUANTIZATION_DEFAULT
+		 && colorspace != V4L2_COLORSPACE_DEFAULT
+		 && colorspace != V4L2_COLORSPACE_RAW )
+		quant = V4L2_MAP_QUANTIZATION_DEFAULT ( false, colorspace, enc );
+
+	if ( quant == V4L2_QUANTIZATION_FULL_RANGE )
+		tags |= rangeFull;
+	else if ( quant == V4L2_QUANTIZATION_LIM_RANGE )
+		tags |= rangeLimited;
+	// else unresolvable DEFAULT -> range unknown.
+
+	return pixFmt ( tags );
+}
 
 int _sr_webcam_wait_ioctl(int fid, int request, void* arg) {
 	int r;
@@ -71,7 +114,7 @@ void* _sr_webcam_callback_loop ( void* arg )
 
 		auto*	bufStart = (unsigned char*)stream->buffers[ buf.index ].start;
 		auto*	uvStart = stream->pixelformat == V4L2_PIX_FMT_NV12 ? bufStart + stream->width * stream->height : nullptr;
-		stream->parent->callback ( stream->parent, bufStart, uvStart, stream->width, stream->height, stream->width, stream->width, stream->pixelformat == V4L2_PIX_FMT_NV12 ? pixFmt::NV12 : pixFmt::YUY2 );
+		stream->parent->callback ( stream->parent, bufStart, uvStart, stream->width, stream->height, stream->width, stream->width, pixFmt ( ( stream->pixelformat == V4L2_PIX_FMT_NV12 ? NV12 : YUY2 ) | stream->colorTags ) );
 
 		_sr_webcam_wait_ioctl ( stream->fid, VIDIOC_QBUF, &buf );
 	}
@@ -211,6 +254,9 @@ bool sr_webcam_open(sr_webcam_device* device)
 		return false;
 	}
 	stream->pixelformat = fmt.fmt.pix.pixelformat;
+	// Capture the colour-space tags the driver negotiated (matrix + range). These
+	// are fixed for the session, so read them once and OR them into every frame.
+	stream->colorTags = _sr_webcam_color_tags(fmt.fmt.pix.colorspace, fmt.fmt.pix.ycbcr_enc, fmt.fmt.pix.quantization);
 	fmt.fmt.pix.bytesperline = fmax(fmt.fmt.pix.bytesperline, fmt.fmt.pix.width * 2);
 	fmt.fmt.pix.sizeimage	 = fmax(fmt.fmt.pix.sizeimage, fmt.fmt.pix.bytesperline * fmt.fmt.pix.height);
 	// Update the size based on the format constraints.

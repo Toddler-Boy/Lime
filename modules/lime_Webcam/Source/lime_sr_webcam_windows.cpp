@@ -178,8 +178,8 @@ public:
 					 && SUCCEEDED ( buffer2_2d->Lock2DSize ( MF2DBuffer_LockFlags_Read, &ptr, &pitchY, &bufferStart, &bufferLength ) )
 					)
 				{
-					// Transmit data to user
-					_parent->callback ( _parent, ptr, ptr + pitchY * captureFormat.height, captureFormat.width, captureFormat.height, pitchY, pitchY, pixFmt::NV12 );
+					// Transmit data to user (pixel format OR'd with the negotiated colour-space tags)
+					_parent->callback ( _parent, ptr, ptr + pitchY * captureFormat.height, captureFormat.width, captureFormat.height, pitchY, pitchY, pixFmt ( NV12 | colorTags ) );
 
 					// Unlock 2D buffer
 					buffer2_2d->Unlock2D ();
@@ -406,6 +406,35 @@ public:
 			return false;
 		}
 
+		// Read the colour-space tags the driver actually negotiated (matrix + range).
+		// MF carries these on the media type, not per-sample, so we read them once
+		// here and OR them into every frame. Absent/unrecognised tags leave the
+		// corresponding bits unset (= unknown). We do not infer from resolution.
+		colorTags = pixFmt ( 0 );
+		IMFMediaType*	actualType = NULL;
+		if ( SUCCEEDED ( videoReader->GetCurrentMediaType ( (DWORD)bestStream, &actualType ) ) && actualType )
+		{
+			UINT32	matrix = 0;
+			if ( SUCCEEDED ( actualType->GetUINT32 ( MF_MT_YUV_MATRIX, &matrix ) ) )
+			{
+				if ( matrix == MFVideoTransferMatrix_BT709 )
+					colorTags = pixFmt ( colorTags | matrixBT709 );
+				else if ( matrix == MFVideoTransferMatrix_BT601 )
+					colorTags = pixFmt ( colorTags | matrixBT601 );
+			}
+
+			UINT32	range = 0;
+			if ( SUCCEEDED ( actualType->GetUINT32 ( MF_MT_VIDEO_NOMINAL_RANGE, &range ) ) )
+			{
+				if ( range == MFNominalRange_0_255 )
+					colorTags = pixFmt ( colorTags | rangeFull );
+				else if ( range == MFNominalRange_16_235 )
+					colorTags = pixFmt ( colorTags | rangeLimited );
+			}
+
+			SafeRelease ( &actualType );
+		}
+
 		// Store infos for callback
 		selectedStream = (DWORD)bestStream;
 		captureFormat = SRWebcamFormat ( typeOut );
@@ -445,6 +474,7 @@ public:
 	sr_webcam_device*	_parent = NULL;
 	int					_id = -1;
 	SRWebcamFormat		captureFormat;
+	pixFmt				colorTags = pixFmt ( 0 );	// negotiated matrix/range bits, OR'd into each frame
 	std::string			friendlyName;
 
 private:

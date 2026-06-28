@@ -225,7 +225,27 @@
 			int rowBytesY = (int)CVPixelBufferGetBytesPerRowOfPlane(imgBuffer, 0);
 			int rowBytesUV = (int)CVPixelBufferGetBytesPerRowOfPlane(imgBuffer, 1);
 
-			_parent->callback(_parent, yBase, uvBase, wBuffer, hBuffer, rowBytesY, rowBytesUV, pixFmt::NV12 );
+			// Read the actual colour-space tags off this buffer (per frame, from OS
+			// tags only - never inferred from resolution). Matrix comes from the
+			// YCbCrMatrix attachment; range from the buffer's pixel-format subtype.
+			// Absent/unrecognised tags leave the corresponding bits unset (= unknown).
+			pixFmt colorTags = pixFmt ( 0 );
+
+			CFTypeRef matrix = CVBufferGetAttachment(imgBuffer, kCVImageBufferYCbCrMatrixKey, NULL);
+			if(matrix) {
+				if(CFEqual(matrix, kCVImageBufferYCbCrMatrix_ITU_R_709_2))
+					colorTags = pixFmt ( colorTags | matrixBT709 );
+				else if(CFEqual(matrix, kCVImageBufferYCbCrMatrix_ITU_R_601_4))
+					colorTags = pixFmt ( colorTags | matrixBT601 );
+			}
+
+			OSType subtype = CVPixelBufferGetPixelFormatType(imgBuffer);
+			if(subtype == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)
+				colorTags = pixFmt ( colorTags | rangeFull );
+			else if(subtype == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
+				colorTags = pixFmt ( colorTags | rangeLimited );
+
+			_parent->callback(_parent, yBase, uvBase, wBuffer, hBuffer, rowBytesY, rowBytesUV, pixFmt ( NV12 | colorTags ) );
 		}
 		CVPixelBufferUnlockBaseAddress(imgBuffer, kCVPixelBufferLock_ReadOnly);
 	}
