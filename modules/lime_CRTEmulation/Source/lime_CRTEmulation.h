@@ -135,8 +135,9 @@ private:
 
 	juce::Rectangle<float>	overlayImgRect;
 
-	juce::Rectangle<float> getTubeRect ( const juce::Rectangle<float>& target );
-	std::vector<juce::Rectangle<float>> calcRects ();
+	[[ nodiscard ]] juce::Rectangle<float> getTubeRect ( const juce::Rectangle<float>& target );
+	[[ nodiscard ]] std::vector<juce::Rectangle<float>> calcRects ();
+	[[ nodiscard ]] juce::Rectangle<float> getCRTRect ();
 
 	settings		curSettings;
 	float			currentZoom = 0.0f;
@@ -210,6 +211,7 @@ private:
 
 	bool	isCamInUse = false;
 	std::unique_ptr<Webcam>		camera;
+	std::atomic<pixFmt>			camPixFmt = pixFmt ( NV12 | matrixBT601 | rangeLimited );
 
 	//
 	// Root directory for CRT emulation resources (overlays, CRT masks, etc.)
@@ -224,9 +226,9 @@ private:
 
 	juce::String		ovlyProfileName = "";
 
-	juce::Point<float>	ovlyCenter = { 0.0f, 0.0f };
-	float				ovlyWidth = 0.0f;
-	float				ovlyHeight = 0.0f;
+	juce::Point<float>	ovlyCenter {};
+	float				ovlyWidth {};
+	float				ovlyHeight {};
 
 	//
 	// CRT Masks

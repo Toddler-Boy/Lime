@@ -345,12 +345,7 @@ void CRTEmulation::renderFrame ()
 
 	// Update dust particles
 	{
-		const auto	dustVisible =		curSettings.overlay
-									&&	overlayTexture->isValid ()
-									&&	overlayDustTexture
-									&&	curSettings.overlayDust;
-
-		dustTarget->setEnabled ( dustVisible );
+		dustTarget->setEnabled ( isDustOrBloomEnabled () );
 		dustTarget->setUniform_f ( "deltaTime", float ( deltaTime ) );
 	}
 
@@ -395,10 +390,7 @@ std::vector<juce::Rectangle<float>> CRTEmulation::calcRects ()
 	//
 	// Calculate CRT image rectangles
 	//
-	const auto	crtRect = juce::Rectangle<float> {	ovlyCenter.getX () - ovlyWidth / 2.0f,
-													ovlyCenter.getY () - ovlyHeight / 2.0f,
-													ovlyWidth,
-													ovlyHeight };
+	const auto	crtRect = getCRTRect ();
 
 	// CRT bounds
 	const auto	tubeRect = getTubeRect ( crtRect );
@@ -430,6 +422,15 @@ std::vector<juce::Rectangle<float>> CRTEmulation::calcRects ()
 }
 //-----------------------------------------------------------------------------
 
+juce::Rectangle<float> CRTEmulation::getCRTRect ()
+{
+	return juce::Rectangle<float> { ovlyCenter.getX () - ovlyWidth / 2.0f,
+									ovlyCenter.getY () - ovlyHeight / 2.0f,
+									ovlyWidth,
+									ovlyHeight };
+}
+//-----------------------------------------------------------------------------
+
 bool CRTEmulation::isOverlayEnabled () const
 {
 	return		curSettings.overlay
@@ -440,7 +441,8 @@ bool CRTEmulation::isOverlayEnabled () const
 bool CRTEmulation::isBezelEnabled () const
 {
 	return		isOverlayEnabled ()
-			&&	bezelTexture && bezelTexture->isValid ();
+			&&	bezelTexture && bezelTexture->isValid ()
+			&& ( curSettings.overlayBezel * 0.01f * mulBezel > 0.0f );
 }
 //-----------------------------------------------------------------------------
 
@@ -782,15 +784,69 @@ void CRTEmulation::setSettings ( const settings& set )
 
 			// Aspect ratio correction for webcam image
 			crtTargetProcessed->setUniform_f ( "crtRflCorrection", ( 4.0f / 3.0f ) / ( float ( camImageNV12_Y.width ) / float ( camImageNV12_Y.height ) ) );
+
+			// Pixel-format sampling switch (always NV12; consumer fails closed on anything else)
 			crtTargetProcessed->setUniform_i ( "crtWebcamFormat", 0 );
 
-			// Webcam settings
+			// Folded YUV->RGB: matrix (colour-space) + range expansion + brightness/contrast/saturation
+			// collapse into one mat3 and a bias, so the shader does only  rfl = M * yuv + bias.
 			{
-				const auto	brightness = std::lerp ( 0.4f, 1.2f, set.webcamBrightness * 0.01f );
-				const auto	contrast = std::lerp ( 0.4f, 1.2f, set.webcamContrast * 0.01f );
-				const auto	saturation = std::lerp ( 0.0f, 2.0f, set.webcamSaturation * 0.01f );
+				// BT.601 / BT.709 full-range YUV->RGB. Column-major (col0=Y, col1=U, col2=V)
+				static const float	mat601[ 9 ] = {
+													1.0f, 1.0f, 1.0f,
+													0.0f, -0.39465f, 2.03211f,
+													1.13983f, -0.581f, 0.0f
+												  };
 
-				crtTargetProcessed->setUniform_f ( "camBrightnessContrastSaturation", { brightness, contrast, saturation } );
+				static const float	mat709[ 9 ] = {
+													1.0f, 1.0f, 1.0f,
+													0.0f, -0.21482f, 2.12798f,
+													1.28033f, -0.38059f, 0.0f
+												  };
+
+				const auto	f = camPixFmt.load ( std::memory_order_relaxed );
+
+				// Fallback policy: unknown matrix -> 601, unknown range -> limited (validated defaults)
+				const auto	is709 = ( f & maskMatrix ) == matrixBT709;
+				const auto	isFull = ( f & maskRange ) == rangeFull;
+
+				const auto*	M = is709 ? mat709 : mat601;
+
+				// Range expansion params (neutral for full range).
+				const auto	yScl = isFull ? 1.0f : 255.0f / 219.0f;
+				const auto	yOff = isFull ? 0.0f : 16.0f / 255.0f;
+				const auto	cScl = isFull ? 1.0f : 255.0f / 224.0f;
+				const auto	cCtr = 128.0f / 255.0f;	// chroma neutral, same for both ranges
+
+				// Sliders
+				const auto	bri = std::lerp ( 0.6f, 1.4f, set.webcamBrightness * 0.01f );
+				const auto	con = std::lerp ( 0.6f, 1.4f, set.webcamContrast * 0.01f );
+				const auto	sat = std::lerp ( 0.0f, 2.0f, set.webcamSaturation * 0.01f );
+
+				// Per-channel net scale+offset BEFORE the matrix (yuv'' = yuv * scale + off):
+				//   Y: range -> contrast(pivot 0.5) -> brightness
+				//   U/V: range+center -> saturation(pivot 0)
+				const auto	scaleY	= con * yScl;
+				const auto	offY	= -con * yScl * yOff - 0.5f * con + bri - 0.5f;
+				const auto	scaleUV	= sat * cScl;
+				const auto	offUV	= -sat * cScl * cCtr;
+
+				// Fold scale into matrix columns: Mprime_col_j = M_col_j * scale_j.
+				const float	Mp[ 9 ] =	{	M[ 0 ] * scaleY,  M[ 1 ] * scaleY,  M[ 2 ] * scaleY,
+											M[ 3 ] * scaleUV, M[ 4 ] * scaleUV, M[ 5 ] * scaleUV,
+											M[ 6 ] * scaleUV, M[ 7 ] * scaleUV, M[ 8 ] * scaleUV
+										};
+
+				// Fold offset into bias: bias = M * (offY, offUV, offUV).
+				const auto	bx = M[ 0 ] * offY + M[ 3 ] * offUV + M[ 6 ] * offUV;
+				const auto	by = M[ 1 ] * offY + M[ 4 ] * offUV + M[ 7 ] * offUV;
+				const auto	bz = M[ 2 ] * offY + M[ 5 ] * offUV + M[ 8 ] * offUV;
+
+				// Upload three columns + bias (your setUniform_f handles vec3).
+				crtTargetProcessed->setUniform_f ( "yuvCol0", { Mp[ 0 ], Mp[ 1 ], Mp[ 2 ] } );
+				crtTargetProcessed->setUniform_f ( "yuvCol1", { Mp[ 3 ], Mp[ 4 ], Mp[ 5 ] } );
+				crtTargetProcessed->setUniform_f ( "yuvCol2", { Mp[ 6 ], Mp[ 7 ], Mp[ 8 ] } );
+				crtTargetProcessed->setUniform_f ( "yuvBias", { bx, by, bz } );
 			}
 		}
 	}
@@ -801,7 +857,7 @@ void CRTEmulation::setSettings ( const settings& set )
 	{
 		const auto	value = set.overlayBezel * 0.01f * mulBezel;
 		bezelTarget->setUniform_f ( "rflLevel", value );
-		bezelTarget->setEnabled ( isBezelEnabled () && value > 0.0f );
+		bezelTarget->setEnabled ( isBezelEnabled () );
 	}
 }
 //-----------------------------------------------------------------------------
@@ -1026,7 +1082,11 @@ void CRTEmulation::addWebcamListener ()
 
 		camera->onDataReceived = [ this ] ( uint8_t* dataY, uint8_t* dataUV, int width, int height, int strideY, int strideUV, pixFmt format )
 		{
-			if ( format == pixFmt::NV12 )
+			camPixFmt.store ( format, std::memory_order_relaxed );
+
+			// format is now a packed bitfield; test the pixel-format axis with a mask
+			// rather than equality (it also carries matrix/range bits).
+			if ( ( format & pixFmt::maskPixelFormat ) == pixFmt::NV12 )
 			{
 				// Resize NV12 textures if needed
 				if ( camImageNV12_Y.width != width || camImageNV12_Y.height != height )
@@ -1065,7 +1125,7 @@ void CRTEmulation::addWebcamListener ()
 					webcamTextureNV12_UV->fromImage ( camImageNV12_UV, false );
 				}
 			}
-			else if ( format == pixFmt::YUY2 )
+			else if ( ( format & pixFmt::maskPixelFormat ) == pixFmt::YUY2 )
 			{
 			}
 		};
