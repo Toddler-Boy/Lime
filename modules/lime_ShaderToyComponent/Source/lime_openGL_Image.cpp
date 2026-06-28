@@ -9,7 +9,7 @@ openGL_Image::openGL_Image ( int _pixLen, int _width, int _height )
 	: pixLen ( _pixLen )
 	, width ( _width )
 	, height ( _height )
-	, data ( std::make_shared<std::vector<uint8_t>> ( _pixLen* _width* _height ) )
+	, data ( std::make_shared<std::vector<uint8_t>> ( _pixLen * _width * _height ) )
 	, isOwner ( true )
 {
 }

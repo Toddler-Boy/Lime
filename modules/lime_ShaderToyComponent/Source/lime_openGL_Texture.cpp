@@ -68,6 +68,38 @@ void openGL_Texture::clear ()
 }
 //-----------------------------------------------------------------------------
 
+constexpr std::tuple<GLint, GLenum, GLenum> getPixelFormats ( const int pixLen, bool isUint )
+{
+	switch ( pixLen )
+	{
+		case 1:
+		{
+			if ( isUint )
+				return { juce::gl::GL_R8UI, juce::gl::GL_RED_INTEGER, juce::gl::GL_UNSIGNED_BYTE };
+
+			return { juce::gl::GL_R8, juce::gl::GL_RED, juce::gl::GL_UNSIGNED_BYTE };
+		}
+
+		case 2:
+			return { juce::gl::GL_RG, juce::gl::GL_RG, juce::gl::GL_UNSIGNED_BYTE };
+
+		case 3:
+			return { juce::gl::GL_RGB, juce::gl::GL_BGR, juce::gl::GL_UNSIGNED_BYTE };
+
+		case 4:
+			return { juce::gl::GL_RGBA, juce::gl::GL_BGRA, juce::gl::GL_UNSIGNED_BYTE };
+
+		case 16:
+			return { juce::gl::GL_RGBA16F, juce::gl::GL_RGBA, juce::gl::GL_FLOAT };
+
+		default:
+			// Unsupported pixel length
+			jassertfalse;
+			return { 0, 0, 0 };
+	}
+}
+//-----------------------------------------------------------------------------
+
 void openGL_Texture::loadImage ( const uint8_t* pixels, int _width, int _height, int _pixLen, int stride /*= 0 */, bool yFlipped /*= true */, bool generateMipmaps /*= false */, bool isUint /*=false */)
 {
 	jassert ( pixels );
@@ -77,23 +109,7 @@ void openGL_Texture::loadImage ( const uint8_t* pixels, int _width, int _height,
 	depth = 0;
 	target = false;
 
-	jassert ( _pixLen >= 1 && _pixLen <= 4 );
-
-	const static std::pair<GLint, GLenum>	pixMap[] =
-	{
-		{},
-		{ juce::gl::GL_R8, juce::gl::GL_RED },				// 1-byte per pixel
-		{ juce::gl::GL_RG, juce::gl::GL_RG },				// 2-bytes per pixel
-		{ juce::gl::GL_RGB, juce::gl::GL_BGR },				// 3-byes per pixel (BGR -> RGB)
-		{ juce::gl::GL_RGBA, juce::gl::GL_BGRA },			// 4-bytes per pixel (BGRA -> RGBA)
-	};
-
-	auto	[ glIntFmt, glSrcFmt ] = pixMap[ _pixLen ];
-	if ( _pixLen == 1 && isUint )
-	{
-		glIntFmt = juce::gl::GL_R8UI;
-		glSrcFmt = juce::gl::GL_RED_INTEGER;
-	}
+	auto	[ glIntFmt, glSrcFmt, glType ] = getPixelFormats ( _pixLen, isUint );
 
 	ownerContext = juce::OpenGLContext::getCurrentContext ();
 
@@ -110,7 +126,7 @@ void openGL_Texture::loadImage ( const uint8_t* pixels, int _width, int _height,
 	// No pixel data supplied, create empty texture
 	if ( ! pixels )
 	{
-		juce::gl::glTexImage2D ( juce::gl::GL_TEXTURE_2D, 0, glIntFmt, _width, _height, 0, glSrcFmt, juce::gl::GL_UNSIGNED_BYTE, nullptr );
+		juce::gl::glTexImage2D ( juce::gl::GL_TEXTURE_2D, 0, glIntFmt, _width, _height, 0, glSrcFmt, glType, nullptr );
 		return;
 	}
 
@@ -123,7 +139,7 @@ void openGL_Texture::loadImage ( const uint8_t* pixels, int _width, int _height,
 			for ( auto y = 0; y < height; ++y )
 				std::copy_n ( pixels + ( ( height - 1 ) - y ) * stride, width * _pixLen, dstVec.data () + y * width * _pixLen );
 
-			juce::gl::glTexImage2D ( juce::gl::GL_TEXTURE_2D, 0, glIntFmt, _width, _height, 0, glSrcFmt, juce::gl::GL_UNSIGNED_BYTE, dstVec.data () );
+			juce::gl::glTexImage2D ( juce::gl::GL_TEXTURE_2D, 0, glIntFmt, _width, _height, 0, glSrcFmt, glType, dstVec.data () );
 		}
 	}
 	else
@@ -136,12 +152,12 @@ void openGL_Texture::loadImage ( const uint8_t* pixels, int _width, int _height,
 				for ( auto y = 0; y < height; ++y )
 					std::copy_n ( pixels + y * stride, width * _pixLen, dstVec.data () + y * width * _pixLen );
 
-				juce::gl::glTexImage2D ( juce::gl::GL_TEXTURE_2D, 0, glIntFmt, _width, _height, 0, glSrcFmt, juce::gl::GL_UNSIGNED_BYTE, dstVec.data () );
+				juce::gl::glTexImage2D ( juce::gl::GL_TEXTURE_2D, 0, glIntFmt, _width, _height, 0, glSrcFmt, glType, dstVec.data () );
 			}
 		}
 		else
 		{
-			juce::gl::glTexImage2D ( juce::gl::GL_TEXTURE_2D, 0, glIntFmt, _width, _height, 0, glSrcFmt, juce::gl::GL_UNSIGNED_BYTE, pixels );
+			juce::gl::glTexImage2D ( juce::gl::GL_TEXTURE_2D, 0, glIntFmt, _width, _height, 0, glSrcFmt, glType, pixels );
 		}
 	}
 
