@@ -10,7 +10,20 @@ openGL_Texture::~openGL_Texture ()
 }
 //-----------------------------------------------------------------------------
 
-void openGL_Texture::asTarget ( int _width, int _height )
+constexpr std::pair<GLenum, GLenum> getTargetFormats ( GLint format )
+{
+	switch ( format )
+	{
+		case juce::gl::GL_R32F:
+			return { juce::gl::GL_RED, juce::gl::GL_FLOAT };
+
+		default:
+			return { juce::gl::GL_RGBA, juce::gl::GL_UNSIGNED_BYTE };
+	}
+}
+//-----------------------------------------------------------------------------
+
+void openGL_Texture::asTarget ( int _width, int _height, int _intFormat )
 {
 	// Target without a size doesn't work
 	jassert ( _width && _height );
@@ -26,16 +39,19 @@ void openGL_Texture::asTarget ( int _width, int _height )
 	if ( ! textureID )
 		juce::gl::glGenTextures ( 1, &textureID );
 
-	if ( width != _width || height != _height )
+	if ( width != _width || height != _height || targetFormat != _intFormat )
 	{
 		width = _width;
 		height = _height;
 		depth = 0;
 		target = true;
+		targetFormat = _intFormat;
+
+		const auto [ srcFormat, type ] = getTargetFormats ( targetFormat );
 
 		juce::gl::glBindTexture ( juce::gl::GL_TEXTURE_2D, textureID );
 		juce::gl::glPixelStorei ( juce::gl::GL_UNPACK_ALIGNMENT, 1 );
-		juce::gl::glTexImage2D ( juce::gl::GL_TEXTURE_2D, 0, juce::gl::GL_RGBA, _width, _height, 0, juce::gl::GL_BGRA, juce::gl::GL_UNSIGNED_BYTE, nullptr );
+		juce::gl::glTexImage2D ( juce::gl::GL_TEXTURE_2D, 0, targetFormat, _width, _height, 0, srcFormat, type, nullptr );
 		juce::gl::glBindTexture ( juce::gl::GL_TEXTURE_2D, 0 );
 	}
 

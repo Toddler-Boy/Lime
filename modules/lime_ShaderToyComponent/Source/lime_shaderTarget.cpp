@@ -80,7 +80,7 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 				break;
 		}
 
-		targetBuffer->glTexture.asTarget ( targetWidth, targetHeight );
+		targetBuffer->glTexture.asTarget ( targetWidth, targetHeight, targetBuffer->targetFormat );
 
 		#if JUCE_WINDOWS
 		{

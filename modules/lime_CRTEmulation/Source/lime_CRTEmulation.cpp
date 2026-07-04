@@ -30,6 +30,11 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	crtProcessedTexture[ 0 ] = addTexture ( "/CRT image1" );
 	crtProcessedTexture[ 1 ] = addTexture ( "/CRT image2" );
 
+	crtBloomCalcTexture[ 0 ] = addTexture ( "/CRT bloom calc1" );
+	crtBloomCalcTexture[ 1 ] = addTexture ( "/CRT bloom calc2" );
+	crtBloomCalcTexture[ 0 ]->targetFormat = juce::gl::GL_R32F;
+	crtBloomCalcTexture[ 1 ]->targetFormat = juce::gl::GL_R32F;
+
 	//
 	// Index to Luma/Chroma shader (converts index of only sixteen colors to YUV/YIQ image)
 	//
@@ -59,6 +64,19 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	lumaChromaTarget->setBufferSizePixels ( res.nativeWidth, res.nativeHeight );
 
 	//
+	// Interpolates to a new bloom level
+	//
+	crtBloomCalcTarget = addTarget ( "crt-calc-bloom.glsl" );
+	crtBloomCalcTarget->setEnableBlend ( false );
+	crtBloomCalcTarget->setTexture ( 0, crtBloomCalcTexture[ 0 ] );
+	crtBloomCalcTarget->setTexture ( 1, crtSourceTexture );
+
+	crtBloomCalcTarget->setTextureFilter ( 0, false );
+	crtBloomCalcTarget->setSize ( 1, 1 );
+	crtBloomCalcTarget->setTargetBuffer ( crtBloomCalcTexture[ 1 ] );
+	crtBloomCalcTarget->setBufferSizePixels ( 1, 1 );
+
+	//
 	// CRT shader (renders CRT emulated screen into a texture)
 	//
 	crtMaskTexture = addTexture ( "CRT Masks/Slot Mask.png", [] ( lime::shaderTexture* dst, const juce::File& root )
@@ -72,6 +90,7 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	crtTarget->setTexture ( 0, crtSourceTexture );
 	crtTarget->setTexture ( 1, crtMaskTexture );
 	crtTarget->setTexture ( 2, crtProcessedTexture[ 1 ] );
+	crtTarget->setTexture ( 3, crtBloomCalcTexture[ 1 ] );
 	crtTarget->setTextureClampMode ( 1, juce::gl::GL_REPEAT );
 
 	crtTarget->setSize ( res.scaledWidth, res.scaledHeight );
@@ -114,7 +133,8 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	crtTargetProcessed->setTexture ( 2, webcamTextureNV12_Y );
 	crtTargetProcessed->setTexture ( 3, webcamTextureNV12_UV );
 	crtTargetProcessed->setTextureClampMode ( 0, juce::gl::GL_CLAMP_TO_BORDER );
-	crtTargetProcessed->setTextureClampMode ( 1, juce::gl::GL_MIRRORED_REPEAT );
+	crtTargetProcessed->setTextureFilter ( 1, false );
+	crtTargetProcessed->setTextureClampMode ( 2, juce::gl::GL_MIRRORED_REPEAT );
 
 	//
 	// Overlay textures
@@ -330,7 +350,19 @@ void CRTEmulation::renderFrame ()
 		crtTarget->setUniform_f ( "u_phosphorFlicker", std::pow ( flicker, 2.0f / 3.0f ) * 0.05f );
 	}
 
-	// Set-up a ping-pong mechanism for CRT processing
+	// Set-up a ping-pong mechanism for CRT bloom current measurement
+	{
+		crtBloomCalcTarget->setUniform_f ( "deltaTime", float ( deltaTime ) );
+
+		crtBloomCalcTarget->setTexture ( 0, crtBloomCalcTexture[ crtBloomCalcTextureIndex ] );
+		crtBloomCalcTextureIndex ^= 1;
+		const auto	bloomTex = crtBloomCalcTexture[ crtBloomCalcTextureIndex ];
+
+		crtBloomCalcTarget->setTargetBuffer ( bloomTex );
+		crtTarget->setTexture ( 3, bloomTex );
+	}
+
+	// Set-up a ping-pong mechanism for CRT phosphor
 	{
 		crtTarget->setTexture ( 2, crtProcessedTexture[ crtProcessedTextureIndex ] );
 
@@ -393,7 +425,11 @@ std::vector<juce::Rectangle<float>> CRTEmulation::calcRects ()
 	const auto	crtRect = getCRTRect ();
 
 	// CRT bounds
-	const auto	tubeRect = getTubeRect ( crtRect );
+	const auto	tmpRect = getTubeRect ( crtRect );
+	const auto	tmpW = tmpRect.getWidth ();
+	const auto	tmpH = tmpRect.getHeight ();
+	const auto	tubeRect = ( tmpRect.withSizeKeepingCentre ( tmpW * ovlyScreenZoom, tmpH * ovlyScreenZoom ) )
+									.translated ( tmpW * ovlyScreenShift.x * 0.01f, tmpH * ovlyScreenShift.y * 0.01f );
 
 	// Lerp between zoomed-out and zoomed-in versions
 	const juce::RectanglePlacement	rp;
@@ -576,12 +612,12 @@ bool CRTEmulation::parseOverlayProfile ( const juce::String& profileName )
 		{ "multipliers/light-bloom",	1.0f },
 		{ "multipliers/dust",			1.0f },
 
-		{ "screen/center",		YamlConfig::vec2f { 0.0f, 0.0f } },
-		{ "screen/size",		YamlConfig::vec2f { 0.0f, 0.0f } },
+		{ "screen/zoom",		1.0f },
+		{ "screen/shift",		YamlConfig::vec2f { 0.0f, 0.0f } },
 
-		{ "bezel/radius",		30 },
 		{ "bezel/zoom",			YamlConfig::vec2f { 1.0f, 1.0f } },
 		{ "bezel/shift",		YamlConfig::vec2f { 0.0f, 0.0f } },
+		{ "bezel/radius",		30 },
 
 		{ "shadow/offset",		YamlConfig::vec2f { 0.2f, 0.3f } },
 		{ "shadow/blur",		4.0f },
@@ -598,6 +634,14 @@ bool CRTEmulation::parseOverlayProfile ( const juce::String& profileName )
 	mulBloom = yml.get<float> ( "multipliers/bloom" );
 	mulLightBloom = yml.get<float> ( "multipliers/light-bloom" );
 	mulDust = yml.get<float> ( "multipliers/dust" );
+
+	//
+	// Screen properties
+	//
+	{
+		ovlyScreenZoom = yml.get<float> ( "screen/zoom" );
+		std::tie ( ovlyScreenShift.x, ovlyScreenShift.y ) = yml.get<YamlConfig::vec2f> ( "screen/shift" );
+	}
 
 	//
 	// Bezel properties
@@ -728,14 +772,16 @@ void CRTEmulation::setSettings ( const settings& set )
 	// CRT emulation uniforms
 	//
 	{
+		lumaChromaTarget->setUniform_f ( "decNoise", set.decNoise * 0.01f );
+
 		lumaChromaTarget->setUniform_f ( "decSharpening", set.decSharpening * 0.01f );
 		lumaChromaTarget->setUniform_f ( "decLumablur", set.decLumaBlur * 0.01f );
 		lumaChromaTarget->setUniform_f ( "decChromablur", set.decChromaBlur * 0.01f );
 
-		lumaChromaTarget->setUniform_f ( "decInterference", set.decInterference * 0.01f );
 		lumaChromaTarget->setUniform_f ( "decCrosstalk", set.decCrosstalk * 0.01f );
-		lumaChromaTarget->setUniform_f ( "decSubcarrier", set.decSubcarrier * 0.01f );
-		lumaChromaTarget->setUniform_f ( "decNoise", set.decNoise * 0.01f );
+		lumaChromaTarget->setUniform_f ( "decPALDelayLine", set.decHannover * 0.01f );
+		lumaChromaTarget->setUniform_f ( "decCrossColor", set.decRainbowing * 0.01f );
+		lumaChromaTarget->setUniform_f ( "decDrift", set.decPhaseError * 0.01f );
 
 		// Bleed
 		{
@@ -753,6 +799,9 @@ void CRTEmulation::setSettings ( const settings& set )
 		// H-wave
 		crtTarget->setUniform_f ( "crtHoffset", set.crtHwave * 0.01f );
 
+		// Convergence
+		crtTarget->setUniform_f ( "crtConvergence", set.crtConvergence * 0.01f );
+
 		// Scanlines
 		crtTarget->setUniform_f ( "crtScanlines", set.crtScanlines * 0.01f );
 
@@ -767,6 +816,9 @@ void CRTEmulation::setSettings ( const settings& set )
 
 		// Phosphor Decay
 		crtTarget->setUniform_f ( "crtRefreshRate", set.isNTSC ? 59.826f : 50.125f );
+
+		// Bloom expansion
+		crtTarget->setUniform_f ( "crtBloomExpansion", set.crtBloomExpansion * 0.01f );
 
 		// Curve
 		crtTargetProcessed->setUniform_f ( "crtCurve", set.crtCurve * 0.01f );
@@ -917,7 +969,7 @@ void CRTEmulation::setIndexTextureSource ( const openGL_Image& img )
 void CRTEmulation::setLumaChromaPalette ( const std::span<float>& palette )
 {
 	constexpr auto	channels = 3;	// YUV or YIQ
-	constexpr auto	height = 3;		// three palettes stacked vertically in one texture (2x YUV + 1x YIQ)
+	constexpr auto	height = 2;		// two palettes stacked vertically in one texture (YUV + YIQ)
 	const auto	width = int ( palette.size () / height );
 
 	indexTarget->lock ();

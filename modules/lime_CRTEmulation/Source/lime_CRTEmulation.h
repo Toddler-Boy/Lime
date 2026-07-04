@@ -27,9 +27,10 @@ public:
 		bool			overlay = true;
 		juce::String	overlayProfile = "C1702 Bedroom";
 		int8_t			overlayDaytime = 35;
+		int8_t			overlayZoom = 0;
+
 		int8_t			overlayBezel = 80;
 		int8_t			overlayShadow = 80;
-		int8_t			overlayZoom = 0;
 		int8_t			overlayDust = 50;
 		int8_t			overlayBloom = 50;
 		int8_t			overlayChromaticAberration = 50;
@@ -50,13 +51,14 @@ public:
 		int8_t			encJailbars = 50;
 
 		// Decoder
+		int8_t			decNoise = 15;
 		int8_t			decSharpening = 30;
 		int8_t			decLumaBlur = 50;
 		int8_t			decChromaBlur = 50;
-		int8_t			decInterference = 20;
 		int8_t			decCrosstalk = 20;
-		int8_t			decSubcarrier = 10;
-		int8_t			decNoise = 15;
+		int8_t			decHannover = 80;
+		int8_t			decRainbowing = 50;
+		int8_t			decPhaseError = 20;
 
 		// CRT
 		int8_t			crtCurve = 20;
@@ -64,8 +66,9 @@ public:
 		std::pair<int8_t, int8_t> crtBleedRed = { 50, -10 };
 		std::pair<int8_t, int8_t> crtBleedGreen = { 50, -10 };
 		std::pair<int8_t, int8_t> crtBleedBlue = { 50, -10 };
-
+		int8_t			crtConvergence = 20;
 		int8_t			crtHwave = 50;
+		int8_t			crtBloomExpansion = 100;
 		int8_t			crtScanlines = 50;
 		int8_t			crtMask = 50;
 		juce::String	crtMaskBitmap = "Shadow Mask EDP";
@@ -110,7 +113,7 @@ public:
 	void updateOverlay ();
 
 	void setSettings ( const settings& set );
-	[[ nodiscard ]] const settings& getSettings () const { return curSettings; }
+	[[ nodiscard ]] settings& getSettings () { return curSettings; }
 
 	void setBackgroundColor ( const juce::Colour bckCol );
 
@@ -166,6 +169,10 @@ private:
 	shaderTexture*	crtSourceTexture;
 	shaderTexture*	crtProcessedTexture[ 2 ];
 	int				crtProcessedTextureIndex = 0;
+
+	shaderTarget*	crtBloomCalcTarget;
+	shaderTexture*	crtBloomCalcTexture[ 2 ];
+	int				crtBloomCalcTextureIndex = 0;
 
 	shaderTexture*	glassTexture;
 	shaderTexture*	webcamTextureNV12_Y = nullptr;
@@ -229,6 +236,8 @@ private:
 	juce::Point<float>	ovlyCenter {};
 	float				ovlyWidth {};
 	float				ovlyHeight {};
+	float				ovlyScreenZoom { 1.0f };
+	juce::Point<float>	ovlyScreenShift {};
 
 	//
 	// CRT Masks

@@ -1,9 +1,9 @@
 #pragma once
 
 #include <mutex>
+#include <optional>
 #include <span>
 #include <variant>
-#include <optional>
 
 #include "lime_openGL_Image.h"
 #include "lime_openGL_Texture.h"
@@ -44,6 +44,7 @@ struct shaderTexture
 	bool				isUint = false;
 	int					pixLen = 0;
 	bool				is3DLUT = false;
+	int					targetFormat = juce::gl::GL_RGBA;
 
 	void unload ()
 	{

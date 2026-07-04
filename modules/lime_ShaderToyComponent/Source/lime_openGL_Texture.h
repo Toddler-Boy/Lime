@@ -11,7 +11,7 @@ public:
 	~openGL_Texture ();
 
 	void clear ();
-	void asTarget ( int width = 0, int height = 0 );
+	void asTarget ( int width = 0, int height = 0, int intFormat = juce::gl::GL_RGBA );
 	void loadImage ( const uint8_t* pixels, int width, int height, int pixLength, int stride = 0, bool yFlipped = true, bool generateMipmaps = false, bool isUint = false );
 	void load3DLUT ( const uint8_t* pixels, int width, int height, int pixLength );
 	void loadFloatPalette ( const float* pixels, int width, int height, int pixLength, bool yFlipped = true );
@@ -34,6 +34,7 @@ private:
 	int		height = 0;
 	int		depth = 0;
 	bool	target = false;
+	int		targetFormat = juce::gl::GL_RGBA;
 
 	juce::OpenGLContext*	ownerContext = nullptr;
 
