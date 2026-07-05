@@ -11,9 +11,6 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	, res ( _res )
 	, indexBuffer ( 1, 384, 272 )
 {
-	enableRenderTimeMeasurement ( true );
-	enableRenderTimeDisplay ( true );
-
 	setName ( "lime::CRTEmulation" );
 	setOpaque ( true );
 
