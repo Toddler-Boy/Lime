@@ -14,6 +14,9 @@ constexpr std::pair<GLenum, GLenum> getTargetFormats ( GLint format )
 {
 	switch ( format )
 	{
+		case juce::gl::GL_RGBA16F:
+			return { juce::gl::GL_RGBA, juce::gl::GL_FLOAT };
+
 		case juce::gl::GL_R32F:
 			return { juce::gl::GL_RED, juce::gl::GL_FLOAT };
 
