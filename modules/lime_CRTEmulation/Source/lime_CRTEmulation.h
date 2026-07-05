@@ -56,7 +56,7 @@ public:
 		int8_t			decLumaBlur = 50;
 		int8_t			decChromaBlur = 50;
 		int8_t			decCrosstalk = 20;
-		int8_t			decHannover = 80;
+		int8_t			decHannover = 90;
 		int8_t			decRainbowing = 50;
 		int8_t			decPhaseError = 20;
 
@@ -69,10 +69,10 @@ public:
 		int8_t			crtConvergence = 20;
 		int8_t			crtHwave = 50;
 		int8_t			crtBloomExpansion = 100;
-		int8_t			crtScanlines = 50;
-		int8_t			crtMask = 50;
+		int8_t			crtScanlines = 25;
+		int8_t			crtMask = 25;
 		juce::String	crtMaskBitmap = "Shadow Mask EDP";
-		int8_t			crtGlow = 66;
+		int8_t			crtHalation = 66;
 		int8_t			crtPhosphorDecay = 60;
 		int8_t			crtReflections = 50;
 		int8_t			crtAmbient = 60;
@@ -127,6 +127,7 @@ public:
 
 private:
 	// this
+	[[ nodiscard ]] bool isHalationEnabled () const;
 	[[ nodiscard ]] bool isBezelEnabled () const;
 	[[ nodiscard ]] bool isOverlayEnabled () const;
 	[[ nodiscard ]] bool isDustOrBloomEnabled () const;
@@ -174,11 +175,14 @@ private:
 	shaderTexture*	crtBloomCalcTexture[ 2 ];
 	int				crtBloomCalcTextureIndex = 0;
 
+	shaderTarget*	halationTarget;
+	shaderTexture*	halationTexture;
+
 	shaderTexture*	glassTexture;
 	shaderTexture*	webcamTextureNV12_Y = nullptr;
 	shaderTexture*	webcamTextureNV12_UV = nullptr;
 
-	shaderTarget*	crtTargetProcessed;
+	shaderTarget*	crtTargetCurved;
 
 	shaderTarget*	overlayTarget;
 	shaderTexture*	overlayTexture;

@@ -11,6 +11,9 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	, res ( _res )
 	, indexBuffer ( 1, 384, 272 )
 {
+	enableRenderTimeMeasurement ( true );
+	enableRenderTimeDisplay ( true );
+
 	setName ( "lime::CRTEmulation" );
 	setOpaque ( true );
 
@@ -25,20 +28,30 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	indexSourceTexture->fromImage ( indexBuffer, false, false, true );
 	lumaChromaPalette = addTexture ( "/YUV/YIQ palette" );
 	lumaChromaSourceTexture = addTexture ( "/YUV/YIQ image" );
+
 	crtSourceTexture = addTexture ( "/RGB image" );
 	crtSourceTexture->generateMipmaps = true;
-	crtProcessedTexture[ 0 ] = addTexture ( "/CRT image1" );
-	crtProcessedTexture[ 1 ] = addTexture ( "/CRT image2" );
 
 	crtBloomCalcTexture[ 0 ] = addTexture ( "/CRT bloom calc1" );
 	crtBloomCalcTexture[ 1 ] = addTexture ( "/CRT bloom calc2" );
 	crtBloomCalcTexture[ 0 ]->targetFormat = juce::gl::GL_R32F;
 	crtBloomCalcTexture[ 1 ]->targetFormat = juce::gl::GL_R32F;
 
+	crtProcessedTexture[ 0 ] = addTexture ( "/CRT image1" );
+	crtProcessedTexture[ 1 ] = addTexture ( "/CRT image2" );
+	crtProcessedTexture[ 0 ]->targetFormat = juce::gl::GL_RGBA16F;
+	crtProcessedTexture[ 1 ]->targetFormat = juce::gl::GL_RGBA16F;
+	crtProcessedTexture[ 0 ]->generateMipmaps = true;
+	crtProcessedTexture[ 1 ]->generateMipmaps = true;
+
+	halationTexture = addTexture ( "/halation" );
+	halationTexture->targetFormat = juce::gl::GL_RGBA16F;
+	halationTexture->generateMipmaps = true;
+
 	//
 	// Index to Luma/Chroma shader (converts index of only sixteen colors to YUV/YIQ image)
 	//
-	indexTarget = addTarget ( "encoder-pal.glsl" );
+	indexTarget = addTarget ( "encoder-c64.glsl" );
 	indexTarget->setEnableBlend ( false );
 
 	indexTarget->setTexture ( 0, indexSourceTexture );
@@ -96,8 +109,18 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	crtTarget->setSize ( res.scaledWidth, res.scaledHeight );
 	crtTarget->setTargetBuffer ( crtProcessedTexture[ 0 ] );
 	crtTarget->setBufferSizePixels ( res.scaledWidth, res.scaledHeight );
-	crtProcessedTexture[ 0 ]->generateMipmaps = true;
-	crtProcessedTexture[ 1 ]->generateMipmaps = true;
+
+	//
+	// Halation shader
+	//
+	halationTarget = addTarget ( "crt-halation.glsl" );
+	halationTarget->setEnableBlend ( false );
+	halationTarget->setTexture ( 0, crtProcessedTexture[ 1 ] );
+	halationTarget->setTextureClampMode ( 0, juce::gl::GL_CLAMP_TO_BORDER );
+
+	halationTarget->setSize ( res.scaledWidth, res.scaledHeight );
+	halationTarget->setTargetBuffer ( halationTexture );
+	halationTarget->setBufferSizePixels ( res.scaledWidth, res.scaledHeight );
 
 	//
 	// Glass reflection texture
@@ -126,15 +149,15 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	//
 	// Renders the CRT emulated texture to screen with optional curve (also adds shadows and reflections)
 	//
-	crtTargetProcessed = addTarget ( "crt-curved.glsl" );
-	crtTargetProcessed->setEnableBlend ( false );
-	crtTargetProcessed->setTexture ( 0, crtProcessedTexture[ 0 ] );
-	crtTargetProcessed->setTexture ( 1, glassTexture );
-	crtTargetProcessed->setTexture ( 2, webcamTextureNV12_Y );
-	crtTargetProcessed->setTexture ( 3, webcamTextureNV12_UV );
-	crtTargetProcessed->setTextureClampMode ( 0, juce::gl::GL_CLAMP_TO_BORDER );
-	crtTargetProcessed->setTextureFilter ( 1, false );
-	crtTargetProcessed->setTextureClampMode ( 2, juce::gl::GL_MIRRORED_REPEAT );
+	crtTargetCurved = addTarget ( "crt-curved.glsl" );
+	crtTargetCurved->setEnableBlend ( false );
+	crtTargetCurved->setTexture ( 0, halationTexture );
+	crtTargetCurved->setTexture ( 1, glassTexture );
+	crtTargetCurved->setTexture ( 2, webcamTextureNV12_Y );
+	crtTargetCurved->setTexture ( 3, webcamTextureNV12_UV );
+	crtTargetCurved->setTextureClampMode ( 0, juce::gl::GL_CLAMP_TO_BORDER );
+	crtTargetCurved->setTextureFilter ( 1, false );
+	crtTargetCurved->setTextureClampMode ( 2, juce::gl::GL_MIRRORED_REPEAT );
 
 	//
 	// Overlay textures
@@ -219,7 +242,7 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	// Bezel shader
 	//
 	bezelTarget = addTarget ( "crt-bezel-reflections.glsl" );
-	bezelTarget->setTexture ( 0, crtProcessedTexture[ 0 ] );
+	bezelTarget->setTexture ( 0, halationTexture );
 	bezelTarget->setTexture ( 1, bezelTexture );
 	bezelTarget->setTexture ( 2, overlayLUT_dusk );
 	bezelTarget->setTexture ( 3, overlayLUT_night );
@@ -303,7 +326,7 @@ void CRTEmulation::updateZoom ()
 {
 	const auto	rects = calcRects ();
 
-	crtTargetProcessed->setBounds ( rects[ 0 ] );
+	crtTargetCurved->setBounds ( rects[ 0 ] );
 
 	if ( rects.size () > 1 )
 	{
@@ -353,8 +376,8 @@ void CRTEmulation::renderFrame ()
 	// Set-up a ping-pong mechanism for CRT bloom current measurement
 	{
 		crtBloomCalcTarget->setUniform_f ( "deltaTime", float ( deltaTime ) );
-
 		crtBloomCalcTarget->setTexture ( 0, crtBloomCalcTexture[ crtBloomCalcTextureIndex ] );
+
 		crtBloomCalcTextureIndex ^= 1;
 		const auto	bloomTex = crtBloomCalcTexture[ crtBloomCalcTextureIndex ];
 
@@ -369,10 +392,13 @@ void CRTEmulation::renderFrame ()
 		crtProcessedTextureIndex ^= 1;
 
 		const auto	tex = crtProcessedTexture[ crtProcessedTextureIndex ];
-
 		crtTarget->setTargetBuffer ( tex );
-		crtTargetProcessed->setTexture ( 0, tex );
-		bezelTarget->setTexture ( 0, tex );
+		halationTarget->setTexture ( 0, tex );
+
+		const auto	bezelTex = isHalationEnabled () ? halationTexture : tex;
+
+		bezelTarget->setTexture ( 0, bezelTex );
+		crtTargetCurved->setTexture ( 0, bezelTex );
 	}
 
 	// Update dust particles
@@ -464,6 +490,12 @@ juce::Rectangle<float> CRTEmulation::getCRTRect ()
 									ovlyCenter.getY () - ovlyHeight / 2.0f,
 									ovlyWidth,
 									ovlyHeight };
+}
+//-----------------------------------------------------------------------------
+
+bool CRTEmulation::isHalationEnabled () const
+{
+	return curSettings.crtEmulation && curSettings.crtHalation;
 }
 //-----------------------------------------------------------------------------
 
@@ -694,13 +726,13 @@ void CRTEmulation::setSettings ( const settings& set )
 		const static encDecShaders	shaders[ 2 ][ 2 ] =
 		{
 			{
-				{ "encoder-pal.glsl",	"decoder-pal.glsl" },
-				{ "encoder-ntsc.glsl",	"decoder-ntsc.glsl" }
+				{ "encoder-c64.glsl",	"decoder-pal.glsl" },
+				{ "encoder-c64.glsl",	"decoder-ntsc.glsl" }
 			},
 
 			{
-				{ "encoder-yuv.glsl",	"decoder-yuv.glsl" },
-				{ "encoder-yiq.glsl",	"decoder-yiq.glsl" }
+				{ "encoder-raw.glsl",	"decoder-yuv.glsl" },
+				{ "encoder-raw.glsl",	"decoder-yiq.glsl" }
 			}
 		};
 
@@ -727,10 +759,14 @@ void CRTEmulation::setSettings ( const settings& set )
 		};
 
 		setTargetShader ( crtTarget, rawCrtShader[ raw ][ 0 ] );
-		setTargetShader ( crtTargetProcessed, rawCrtShader[ raw ][ 1 ] );
+		setTargetShader ( crtTargetCurved, rawCrtShader[ raw ][ 1 ] );
+
+		crtBloomCalcTarget->setEnabled ( set.crtEmulation );
 	}
 
 	curSettings = set;
+
+	halationTarget->setEnabled ( isHalationEnabled () );
 
 	//
 	// Monitor shadows (only visible when overlays are enabled)
@@ -756,6 +792,7 @@ void CRTEmulation::setSettings ( const settings& set )
 	}
 
 	// Index to YUV/YIQ encoder
+	indexTarget->setUniform_f ( "encPaletteY", set.isNTSC ? 1.0f : 0.0f );
 	indexTarget->setUniform_f ( "decJailbars", set.encJailbars * 0.01f );
 
 	// Signal decoder
@@ -808,9 +845,6 @@ void CRTEmulation::setSettings ( const settings& set )
 		// Shadowmask
 		crtTarget->setUniform_f ( "crtMask", set.crtMask * 0.01f );
 
-		// Glow
-		crtTarget->setUniform_f ( "crtGlow", set.crtGlow * 0.01f );
-
 		// Ambient
 		crtTarget->setUniform_f ( "crtAmbient", set.crtAmbient * 0.01f );
 
@@ -820,25 +854,28 @@ void CRTEmulation::setSettings ( const settings& set )
 		// Bloom expansion
 		crtTarget->setUniform_f ( "crtBloomExpansion", set.crtBloomExpansion * 0.01f );
 
+		// Halation
+		halationTarget->setUniform_f ( "crtHalation", set.crtHalation * 0.01f );
+
 		// Curve
-		crtTargetProcessed->setUniform_f ( "crtCurve", set.crtCurve * 0.01f );
+		crtTargetCurved->setUniform_f ( "crtCurve", set.crtCurve * 0.01f );
 
 		// Vignette
-		crtTargetProcessed->setUniform_f ( "crtVignette", set.crtVignette * 0.01f );
+		crtTargetCurved->setUniform_f ( "crtVignette", set.crtVignette * 0.01f );
 
 		// Webcam stuff
 		{
 			// Reflection
-			crtTargetProcessed->setUniform_f ( "crtSource", set.webcam ? 1.0f : 0.0f );
+			crtTargetCurved->setUniform_f ( "crtSource", set.webcam ? 1.0f : 0.0f );
 
 			const auto	reflectionValue = set.crtReflections * 0.01f * mulReflection;
-			crtTargetProcessed->setUniform_f ( "crtReflection", reflectionValue * isGlassEnabled () );
+			crtTargetCurved->setUniform_f ( "crtReflection", reflectionValue * isGlassEnabled () );
 
 			// Aspect ratio correction for webcam image
-			crtTargetProcessed->setUniform_f ( "crtRflCorrection", ( 4.0f / 3.0f ) / ( float ( camImageNV12_Y.width ) / float ( camImageNV12_Y.height ) ) );
+			crtTargetCurved->setUniform_f ( "crtRflCorrection", ( 4.0f / 3.0f ) / ( float ( camImageNV12_Y.width ) / float ( camImageNV12_Y.height ) ) );
 
 			// Pixel-format sampling switch (always NV12; consumer fails closed on anything else)
-			crtTargetProcessed->setUniform_i ( "crtWebcamFormat", 0 );
+			crtTargetCurved->setUniform_i ( "crtWebcamFormat", 0 );
 
 			// Folded YUV->RGB: matrix (colour-space) + range expansion + brightness/contrast/saturation
 			// collapse into one mat3 and a bias, so the shader does only  rfl = M * yuv + bias.
@@ -895,10 +932,10 @@ void CRTEmulation::setSettings ( const settings& set )
 				const auto	bz = M[ 2 ] * offY + M[ 5 ] * offUV + M[ 8 ] * offUV;
 
 				// Upload three columns + bias (your setUniform_f handles vec3).
-				crtTargetProcessed->setUniform_f ( "yuvCol0", { Mp[ 0 ], Mp[ 1 ], Mp[ 2 ] } );
-				crtTargetProcessed->setUniform_f ( "yuvCol1", { Mp[ 3 ], Mp[ 4 ], Mp[ 5 ] } );
-				crtTargetProcessed->setUniform_f ( "yuvCol2", { Mp[ 6 ], Mp[ 7 ], Mp[ 8 ] } );
-				crtTargetProcessed->setUniform_f ( "yuvBias", { bx, by, bz } );
+				crtTargetCurved->setUniform_f ( "yuvCol0", { Mp[ 0 ], Mp[ 1 ], Mp[ 2 ] } );
+				crtTargetCurved->setUniform_f ( "yuvCol1", { Mp[ 3 ], Mp[ 4 ], Mp[ 5 ] } );
+				crtTargetCurved->setUniform_f ( "yuvCol2", { Mp[ 6 ], Mp[ 7 ], Mp[ 8 ] } );
+				crtTargetCurved->setUniform_f ( "yuvBias", { bx, by, bz } );
 			}
 		}
 	}
@@ -909,6 +946,7 @@ void CRTEmulation::setSettings ( const settings& set )
 	{
 		const auto	value = set.overlayBezel * 0.01f * mulBezel;
 		bezelTarget->setUniform_f ( "rflLevel", value );
+		bezelTarget->setUniform_f ( "crtCurve", set.crtCurve * 0.01f );
 		bezelTarget->setEnabled ( isBezelEnabled () );
 	}
 }
@@ -948,9 +986,9 @@ void CRTEmulation::setBackgroundColor ( const juce::Colour _bckCol )
 {
 	bckCol = _bckCol;
 
-	crtTargetProcessed->setTextureBorderColor ( 0, bckCol );
-	crtTargetProcessed->setTargetBackgroundColor ( bckCol );
-	crtTargetProcessed->setUniform_f ( "backCol", { bckCol.getFloatRed (), bckCol.getFloatGreen (), bckCol.getFloatBlue () } );
+	crtTargetCurved->setTextureBorderColor ( 0, bckCol );
+	crtTargetCurved->setTargetBackgroundColor ( bckCol );
+	crtTargetCurved->setUniform_f ( "backCol", { bckCol.getFloatRed (), bckCol.getFloatGreen (), bckCol.getFloatBlue () } );
 }
 //-----------------------------------------------------------------------------
 

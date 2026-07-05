@@ -51,7 +51,7 @@
 			.card h2, .card h3 {
 				margin: 8px -8px -8px;
 				margin-top: auto;
-				font-size: 10px;
+				font-size: 9px;
 				background: #d97757;
 				color: #161616;
 				padding: 0.3ex 0.5ex;
@@ -65,11 +65,12 @@
 	<body>
 		<div id="stage">
 			<div id="stack">
-				<div class="card"><h1>encoder-[pal/ntsc]</h1>indexBuffer<br>palette<h2>lumaChromaSourceTexture</h2></div>
-				<div class="card"><h1>decoder-[pal/ntsc]</h1>lumaChromaSourceTexture<h2>crtSourceTexture</h2></div>
-				<div class="card"><h1>crt-calc-bloom</h1>crtSourceTexture<br>crtBloomCalcTexture 0🏓1<h2>crtBloomCalcTexture 1🏓0</h2></div>
-				<div class="card"><h1>crt-simulation</h1>crtSourceTexture<br>crtProcessedTexture 0🏓1<h2>crtProcessedTexture 1🏓0</h2></div>
-				<div class="card"><h1>crt-curved</h1>crtProcessedTexture 0🏓1<br>reflection<h3>display</h3></div>
+				<div class="card"><h1>encoder-c64</h1>indexBuffer<br>palette<h2>lumaChromaSourceTexture</h2></div>
+				<div class="card"><h1>decoder-[pal/ntsc]</h1>lumaChromaSourceTexture<h2>crtSourceTexture (f)</h2></div>
+				<div class="card"><h1>crt-calc-bloom</h1>crtSourceTexture (f)<br>crtBloomCalcTexture 0🏓1 (f)<h2>crtBloomCalcTexture 1🏓0 (f)</h2></div>
+				<div class="card"><h1>crt-simulation</h1>crtSourceTexture (f)<br>crtProcessedTexture 0🏓1 (f)<h2>crtProcessedTexture 1🏓0 (f)</h2></div>
+				<div class="card"><h1>crt-halation</h1>crtProcessedTexture 0🏓1 (f)<h2>halationTexture (f)</h2></div>
+				<div class="card"><h1>crt-curved</h1>halationTexture (f)<br>reflection || webcam<h3>display</h3></div>
 			</div>
 		</div>
 
