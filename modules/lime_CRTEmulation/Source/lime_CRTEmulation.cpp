@@ -983,9 +983,25 @@ void CRTEmulation::setBackgroundColor ( const juce::Colour _bckCol )
 {
 	bckCol = _bckCol;
 
-	crtTargetCurved->setTextureBorderColor ( 0, bckCol );
-	crtTargetCurved->setTargetBackgroundColor ( bckCol );
-	crtTargetCurved->setUniform_f ( "backCol", { bckCol.getFloatRed (), bckCol.getFloatGreen (), bckCol.getFloatBlue () } );
+	auto srgbToLinear = [] ( const juce::Colour col )
+	{
+		auto srgbToLinearC = [] ( float c )
+		{
+			return c <= 0.04045f ? c / 12.92f
+								 : std::pow ( ( c + 0.055f ) / 1.055f, 2.4f );
+		};
+
+		return juce::Colour::fromFloatRGBA ( srgbToLinearC ( col.getFloatRed () ),
+											 srgbToLinearC ( col.getFloatGreen () ),
+											 srgbToLinearC ( col.getFloatBlue () ),
+											 col.getFloatAlpha () );
+	};
+
+	const auto	bckColLinear = srgbToLinear ( bckCol );
+
+	crtTargetCurved->setTextureBorderColor ( 0, bckColLinear );
+	crtTargetCurved->setTargetBackgroundColor ( bckColLinear );
+	crtTargetCurved->setUniform_f ( "backCol", { bckColLinear.getFloatRed (), bckColLinear.getFloatGreen (), bckColLinear.getFloatBlue () } );
 }
 //-----------------------------------------------------------------------------
 
