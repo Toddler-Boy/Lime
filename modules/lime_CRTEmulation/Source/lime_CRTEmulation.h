@@ -72,11 +72,15 @@ public:
 		int8_t			crtScanlines = 25;
 		int8_t			crtMask = 25;
 		juce::String	crtMaskBitmap = "Shadow Mask EDP";
-		int8_t			crtHalation = 66;
 		int8_t			crtPhosphorDecay = 60;
-		int8_t			crtReflections = 50;
-		int8_t			crtAmbient = 60;
+
+		int8_t			crtAdjacentExcitation = 50;
+
+		int8_t			crtHalation = 50;
+
 		int8_t			crtVignette = 60;
+		int8_t			crtAmbient = 60;
+		int8_t			crtReflections = 50;
 
 		// Webcam
 		bool			webcam = true;
@@ -127,6 +131,7 @@ public:
 
 private:
 	// this
+	[[ nodiscard ]] bool isAdjacentExcitationEnabled () const;
 	[[ nodiscard ]] bool isHalationEnabled () const;
 	[[ nodiscard ]] bool isBezelEnabled () const;
 	[[ nodiscard ]] bool isOverlayEnabled () const;
@@ -174,6 +179,9 @@ private:
 	shaderTarget*	crtBloomCalcTarget;
 	shaderTexture*	crtBloomCalcTexture[ 2 ];
 	int				crtBloomCalcTextureIndex = 0;
+
+	shaderTarget*	adjacentExcitationTarget;
+	shaderTexture*	adjacentExcitationTexture;
 
 	shaderTarget*	halationTarget;
 	shaderTexture*	halationTexture;

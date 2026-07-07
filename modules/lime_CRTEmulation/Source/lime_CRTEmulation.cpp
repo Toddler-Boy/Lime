@@ -41,6 +41,10 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	crtProcessedTexture[ 0 ]->generateMipmaps = true;
 	crtProcessedTexture[ 1 ]->generateMipmaps = true;
 
+	adjacentExcitationTexture = addTexture ( "/adjacent excitation" );
+	adjacentExcitationTexture->targetFormat = juce::gl::GL_RGBA16F;
+	adjacentExcitationTexture->generateMipmaps = true;
+
 	halationTexture = addTexture ( "/halation" );
 	halationTexture->targetFormat = juce::gl::GL_RGBA16F;
 	halationTexture->generateMipmaps = true;
@@ -108,11 +112,23 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	crtTarget->setBufferSizePixels ( res.scaledWidth, res.scaledHeight );
 
 	//
+	// Adjacent Excitation shader
+	//
+	adjacentExcitationTarget = addTarget ( "crt-adjacent-excitation.glsl" );
+	adjacentExcitationTarget->setEnableBlend ( false );
+	adjacentExcitationTarget->setTexture ( 0, crtProcessedTexture[ 1 ] );
+	adjacentExcitationTarget->setTextureClampMode ( 0, juce::gl::GL_CLAMP_TO_BORDER );
+
+	adjacentExcitationTarget->setSize ( res.scaledWidth, res.scaledHeight );
+	adjacentExcitationTarget->setTargetBuffer ( adjacentExcitationTexture );
+	adjacentExcitationTarget->setBufferSizePixels ( res.scaledWidth, res.scaledHeight );
+
+	//
 	// Halation shader
 	//
 	halationTarget = addTarget ( "crt-halation.glsl" );
 	halationTarget->setEnableBlend ( false );
-	halationTarget->setTexture ( 0, crtProcessedTexture[ 1 ] );
+	halationTarget->setTexture ( 0, adjacentExcitationTexture );
 	halationTarget->setTextureClampMode ( 0, juce::gl::GL_CLAMP_TO_BORDER );
 
 	halationTarget->setSize ( res.scaledWidth, res.scaledHeight );
@@ -388,14 +404,33 @@ void CRTEmulation::renderFrame ()
 
 		crtProcessedTextureIndex ^= 1;
 
-		const auto	tex = crtProcessedTexture[ crtProcessedTextureIndex ];
+		auto	tex = crtProcessedTexture[ crtProcessedTextureIndex ];
 		crtTarget->setTargetBuffer ( tex );
-		halationTarget->setTexture ( 0, tex );
 
-		const auto	bezelTex = isHalationEnabled () ? halationTexture : tex;
+		// Adjacent excitation
+		{
+			const auto	adjacentEnabled = isAdjacentExcitationEnabled ();
+			adjacentExcitationTarget->setEnabled ( adjacentEnabled );
+			if ( adjacentEnabled )
+			{
+				adjacentExcitationTarget->setTexture ( 0, tex );
+				tex = adjacentExcitationTexture;
+			}
+		}
 
-		bezelTarget->setTexture ( 0, bezelTex );
-		crtTargetCurved->setTexture ( 0, bezelTex );
+		// Halation
+		{
+			const auto	halationEnabled = isHalationEnabled ();
+			halationTarget->setEnabled ( halationEnabled );
+			if ( halationEnabled )
+			{
+				halationTarget->setTexture ( 0, tex );
+				tex = halationTexture;
+			}
+		}
+
+		bezelTarget->setTexture ( 0, tex );
+		crtTargetCurved->setTexture ( 0, tex );
 	}
 
 	// Update dust particles
@@ -487,6 +522,12 @@ juce::Rectangle<float> CRTEmulation::getCRTRect ()
 									ovlyCenter.getY () - ovlyHeight / 2.0f,
 									ovlyWidth,
 									ovlyHeight };
+}
+//-----------------------------------------------------------------------------
+
+bool CRTEmulation::isAdjacentExcitationEnabled () const
+{
+	return curSettings.crtEmulation && curSettings.crtAdjacentExcitation;
 }
 //-----------------------------------------------------------------------------
 
@@ -763,7 +804,7 @@ void CRTEmulation::setSettings ( const settings& set )
 
 	curSettings = set;
 
-	halationTarget->setEnabled ( isHalationEnabled () );
+//	halationTarget->setEnabled ( isHalationEnabled () );
 
 	//
 	// Monitor shadows (only visible when overlays are enabled)
@@ -839,26 +880,29 @@ void CRTEmulation::setSettings ( const settings& set )
 		// Scanlines
 		crtTarget->setUniform_f ( "crtScanlines", set.crtScanlines * 0.01f );
 
+		// Bloom expansion
+		crtTarget->setUniform_f ( "crtBloomExpansion", set.crtBloomExpansion * 0.01f );
+
 		// Shadowmask
 		crtTarget->setUniform_f ( "crtMask", set.crtMask * 0.01f );
-
-		// Ambient
-		crtTarget->setUniform_f ( "crtAmbient", set.crtAmbient * 0.01f );
 
 		// Phosphor Decay
 		crtTarget->setUniform_f ( "crtRefreshRate", set.isNTSC ? 59.826f : 50.125f );
 
-		// Bloom expansion
-		crtTarget->setUniform_f ( "crtBloomExpansion", set.crtBloomExpansion * 0.01f );
+		// Adjacent excitation
+		adjacentExcitationTarget->setUniform_f ( "crtAdjacent", set.crtAdjacentExcitation * 0.01f );
 
 		// Halation
 		halationTarget->setUniform_f ( "crtHalation", set.crtHalation * 0.01f );
 
-		// Curve
-		crtTargetCurved->setUniform_f ( "crtCurve", set.crtCurve * 0.01f );
-
 		// Vignette
 		crtTargetCurved->setUniform_f ( "crtVignette", set.crtVignette * 0.01f );
+
+		// Ambient
+		crtTargetCurved->setUniform_f ( "crtAmbient", set.crtAmbient * 0.01f );
+
+		// Curve
+		crtTargetCurved->setUniform_f ( "crtCurve", set.crtCurve * 0.01f );
 
 		// Webcam stuff
 		{
