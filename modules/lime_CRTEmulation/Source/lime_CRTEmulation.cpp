@@ -836,11 +836,11 @@ void CRTEmulation::setSettings ( const settings& set )
 	// Signal decoder
 	{
 		// NTSC has a stronger brightness bias
-		const auto	brightness = ( set.brightness - ( set.isNTSC ? 70.0f : 50.0f ) ) * ( 1.0f / 256.0f );
-		const auto	contrast = std::lerp ( 0.4f, 1.2f, set.contrast * 0.01f );
-		const auto	saturation = std::lerp ( 0.0f, 0.8f, ( set.saturation + ( set.isNTSC ? 0.0f : 5.0f ) ) * 0.01f );
+		const auto	brightness	=	set.brightness * 0.01f - ( set.isNTSC ? 0.7f : 0.5f );
+		const auto	contrast	=	std::lerp ( 0.4f, 1.2f, set.contrast * 0.01f );
+		const auto	saturation	=	std::lerp ( 0.0f, set.isNTSC ? 0.8f : 0.9f, set.saturation * 0.01f );
 
-		lumaChromaTarget->setUniform_f ( "encBrightnessContrastSaturation", { brightness, contrast, saturation } );
+		lumaChromaTarget->setUniform_f ( "encBrightnessContrastSaturation", { brightness * 0.5f, contrast, saturation } );
 	}
 
 	//
