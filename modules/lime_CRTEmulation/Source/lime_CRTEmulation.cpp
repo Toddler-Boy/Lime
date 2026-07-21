@@ -598,7 +598,7 @@ void CRTEmulation::setRoot ( const juce::File& _root )
 
 		const auto	files = rootOverlays.findChildFiles ( juce::File::TypesOfFileToFind::findDirectories, false, "*" );
 
-		// Only add folders that contain a profile.ini file
+		// Only add folders that contain a profile.yml file
 		for ( const auto& f : files )
 			if ( f.getChildFile ( "profile.yml" ).existsAsFile () )
 				overlayProfiles.add ( f.getFileName () );
