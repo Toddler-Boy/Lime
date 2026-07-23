@@ -98,8 +98,7 @@ void* _sr_webcam_callback_loop ( void* arg )
 		FD_ZERO ( &fds );
 		FD_SET ( stream->fid, &fds );
 
-		// Short timeout: sr_webcam_stop joins this thread, an idle/stalled
-		// device must not hold up the shutdown
+		// Short timeout so sr_webcam_stop can join promptly
 		struct	timeval tv { .tv_sec = 0, .tv_usec = 200000 };
 
 		int	res = select ( stream->fid + 1, &fds, NULL, NULL, &tv );
@@ -119,8 +118,7 @@ void* _sr_webcam_callback_loop ( void* arg )
 			if ( errno != EIO )
 				return NULL;
 
-		// Respect the driver's row stride: padded rows would otherwise shear
-		// the frame, and the NV12 UV plane starts at strideY * height
+		// The NV12 UV plane starts at strideY * height (rows may be padded)
 		auto*	bufStart = (unsigned char*)stream->buffers[ buf.index ].start;
 		auto*	uvStart = stream->pixelformat == V4L2_PIX_FMT_NV12 ? bufStart + stream->strideY * stream->height : nullptr;
 		stream->parent->callback ( stream->parent, bufStart, uvStart, stream->width, stream->height, stream->strideY, stream->strideY, pixFmt ( ( stream->pixelformat == V4L2_PIX_FMT_NV12 ? NV12 : YUY2 ) | stream->colorTags ) );
@@ -267,9 +265,7 @@ bool sr_webcam_open(sr_webcam_device* device)
 	// Capture the colour-space tags the driver negotiated (matrix + range). These
 	// are fixed for the session, so read them once and OR them into every frame.
 	stream->colorTags = _sr_webcam_color_tags(fmt.fmt.pix.colorspace, fmt.fmt.pix.ycbcr_enc, fmt.fmt.pix.quantization);
-	// Update the size based on the format constraints. Keep the driver's real
-	// row stride for NV12 (padded rows); YUYV frames are dropped downstream,
-	// width is fine there.
+	// Update the size based on the format constraints
 	stream->width  = fmt.fmt.pix.width;
 	stream->height = fmt.fmt.pix.height;
 	stream->strideY = (stream->pixelformat == V4L2_PIX_FMT_NV12 && fmt.fmt.pix.bytesperline > 0)
@@ -374,9 +370,7 @@ void sr_webcam_stop(sr_webcam_device* device) {
 		_sr_webcam_v4lInfos* stream = (_sr_webcam_v4lInfos*)(device->stream);
 		enum v4l2_buf_type type		= V4L2_BUF_TYPE_VIDEO_CAPTURE;
 		_sr_webcam_wait_ioctl(stream->fid, VIDIOC_STREAMOFF, &type);
-		// Ask the capture thread to exit and wait for it: teardown unmaps the
-		// buffers the loop reads, so the thread must be gone first. Join even
-		// if STREAMOFF failed.
+		// Teardown unmaps the buffers the loop reads, join before anything else
 		stream->shouldStop = 1;
 		pthread_join(stream->thread, NULL);
 		device->running = 0;

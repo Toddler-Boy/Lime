@@ -153,8 +153,7 @@ public:
 
 	STDMETHODIMP OnFlush ( DWORD ) override
 	{
-		// Runs on the MF work-queue thread; stop() waits for this before the
-		// reader may be released (MF's async source-reader contract)
+		// stop () waits for this before the reader may be released
 		{
 			const std::lock_guard	sl ( flushMutex );
 			flushDone = true;
@@ -211,9 +210,8 @@ public:
 
 	bool setupWith ( int id, int framerate, int w, int h )
 	{
-		// All the COM objects used during setup, released on EVERY exit path.
-		// The reader keeps its own references to what it needs (media source,
-		// callback), so releasing these after creation is correct
+		// Setup-only COM objects, released on every exit path (the reader
+		// keeps its own references to what it needs)
 		IMFAttributes*	msAttr = nullptr;
 		IMFMediaSource*	mSrc = nullptr;
 		IMFAttributes*	srAttr = nullptr;
@@ -534,8 +532,7 @@ private:
 	IMFSourceReader*	videoReader = nullptr;
 	DWORD				selectedStream = 0;
 
-	// The creating sr_webcam_open holds the initial reference; MF's refs come
-	// and go on top of it, sr_webcam_delete releases it (COM delete-on-zero)
+	// sr_webcam_open holds the initial reference, sr_webcam_delete releases it
 	long				refCount = 1;
 
 	// OnFlush handshake, see stop()
