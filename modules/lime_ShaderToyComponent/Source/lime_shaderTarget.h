@@ -171,6 +171,11 @@ private:
 
 		void update ( const int index );
 	};
+
+	// Guards `uniforms`: the message thread inserts values (setFrameAndTime,
+	// slider updates) while the GL thread inserts, erases and iterates the
+	// same map every frame
+	std::mutex									uniformsLock;
 	std::unordered_map<std::string, uniform>	uniforms;
 
 	void removeUniform ( const std::string& name );

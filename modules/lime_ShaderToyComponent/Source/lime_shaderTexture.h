@@ -4,6 +4,7 @@
 #include <optional>
 #include <span>
 #include <variant>
+#include <vector>
 
 #include "lime_openGL_Image.h"
 #include "lime_openGL_Texture.h"
@@ -14,7 +15,7 @@ namespace lime
 
 struct shaderFloatTexture
 {
-	std::span<float>	floatPalette;
+	std::vector<float>	floatPalette;
 	int					width = 0;
 	int					height = 0;
 };
@@ -48,6 +49,8 @@ struct shaderTexture
 
 	void unload ()
 	{
+		const std::lock_guard	sl ( lock );
+
 		source = std::monostate {};
 		textureUpdated = true;
 	}
@@ -55,17 +58,15 @@ struct shaderTexture
 	template<typename T>
 	void setSource ( T&& newSrc, bool _yFlipped = true, bool _genMipmaps = false, bool _isUint = false, int _pixLen = 0, bool _is3DLUT = false )
 	{
-		if ( lock.try_lock () )
-		{
-			source = std::forward<T> ( newSrc );
-			yFlipped = _yFlipped;
-			generateMipmaps = _genMipmaps;
-			isUint = _isUint;
-			pixLen = _pixLen;
-			is3DLUT = _is3DLUT;
-			textureUpdated = true;
-			lock.unlock ();
-		}
+		const std::lock_guard	sl ( lock );
+
+		source = std::forward<T> ( newSrc );
+		yFlipped = _yFlipped;
+		generateMipmaps = _genMipmaps;
+		isUint = _isUint;
+		pixLen = _pixLen;
+		is3DLUT = _is3DLUT;
+		textureUpdated = true;
 	}
 
 	void fromImage ( const openGL_Image& img, bool _yFlipped = true, bool _genMip = true, bool _isUint = false )

@@ -27,6 +27,7 @@ typedef struct {
 	sr_webcam_device* parent;
 	int width;
 	int height;
+	int strideY;		// driver row stride in bytes (>= width for padded rows)
 	int id;
 	int framerate;
 	__u32 pixelformat;
@@ -34,6 +35,7 @@ typedef struct {
 	_sr_webcam_buffer* buffers;
 	int buffersCount;
 	pthread_t thread;
+	volatile int shouldStop;	// polled by the capture loop; stop() sets it and JOINS the thread
 } _sr_webcam_v4lInfos;
 
 // Map the V4L2 colour-space tags negotiated on the format struct to our packed
@@ -90,18 +92,23 @@ void* _sr_webcam_callback_loop ( void* arg )
 {
 	_sr_webcam_v4lInfos* stream = (_sr_webcam_v4lInfos*)arg;
 
-	// \todo Make sure that this is blocking to avoid overload.
-	while ( 1 )
+	while ( ! stream->shouldStop )
 	{
 		fd_set	fds;
 		FD_ZERO ( &fds );
 		FD_SET ( stream->fid, &fds );
 
-		struct	timeval tv { .tv_sec = 2, .tv_usec = 0 };
+		// Short timeout: sr_webcam_stop joins this thread, an idle/stalled
+		// device must not hold up the shutdown
+		struct	timeval tv { .tv_sec = 0, .tv_usec = 200000 };
 
 		int	res = select ( stream->fid + 1, &fds, NULL, NULL, &tv );
-		if ( res == -1 || res == 0 )
+		if ( res == -1 && errno != EINTR )
 			return NULL;
+
+		// Timeout/interruption: nothing to dequeue, re-check the stop flag
+		if ( res <= 0 )
+			continue;
 
 		struct	v4l2_buffer buf;
 		memset ( &buf, 0, sizeof ( buf ) );
@@ -112,9 +119,11 @@ void* _sr_webcam_callback_loop ( void* arg )
 			if ( errno != EIO )
 				return NULL;
 
+		// Respect the driver's row stride: padded rows would otherwise shear
+		// the frame, and the NV12 UV plane starts at strideY * height
 		auto*	bufStart = (unsigned char*)stream->buffers[ buf.index ].start;
-		auto*	uvStart = stream->pixelformat == V4L2_PIX_FMT_NV12 ? bufStart + stream->width * stream->height : nullptr;
-		stream->parent->callback ( stream->parent, bufStart, uvStart, stream->width, stream->height, stream->width, stream->width, pixFmt ( ( stream->pixelformat == V4L2_PIX_FMT_NV12 ? NV12 : YUY2 ) | stream->colorTags ) );
+		auto*	uvStart = stream->pixelformat == V4L2_PIX_FMT_NV12 ? bufStart + stream->strideY * stream->height : nullptr;
+		stream->parent->callback ( stream->parent, bufStart, uvStart, stream->width, stream->height, stream->strideY, stream->strideY, pixFmt ( ( stream->pixelformat == V4L2_PIX_FMT_NV12 ? NV12 : YUY2 ) | stream->colorTags ) );
 
 		_sr_webcam_wait_ioctl ( stream->fid, VIDIOC_QBUF, &buf );
 	}
@@ -174,6 +183,7 @@ bool sr_webcam_open(sr_webcam_device* device)
 	struct v4l2_capability cap;
 	// If we can't query the device capabilities, or it doesn't support video streaming, skip.
 	if(_sr_webcam_wait_ioctl(fid, VIDIOC_QUERYCAP, &cap) == -1 || !(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE) || !(cap.capabilities & V4L2_CAP_STREAMING)) {
+		close(fid);
 		free(stream);
 		return false;
 	}
@@ -257,11 +267,14 @@ bool sr_webcam_open(sr_webcam_device* device)
 	// Capture the colour-space tags the driver negotiated (matrix + range). These
 	// are fixed for the session, so read them once and OR them into every frame.
 	stream->colorTags = _sr_webcam_color_tags(fmt.fmt.pix.colorspace, fmt.fmt.pix.ycbcr_enc, fmt.fmt.pix.quantization);
-	fmt.fmt.pix.bytesperline = fmax(fmt.fmt.pix.bytesperline, fmt.fmt.pix.width * 2);
-	fmt.fmt.pix.sizeimage	 = fmax(fmt.fmt.pix.sizeimage, fmt.fmt.pix.bytesperline * fmt.fmt.pix.height);
-	// Update the size based on the format constraints.
+	// Update the size based on the format constraints. Keep the driver's real
+	// row stride for NV12 (padded rows); YUYV frames are dropped downstream,
+	// width is fine there.
 	stream->width  = fmt.fmt.pix.width;
 	stream->height = fmt.fmt.pix.height;
+	stream->strideY = (stream->pixelformat == V4L2_PIX_FMT_NV12 && fmt.fmt.pix.bytesperline > 0)
+						? (int)fmt.fmt.pix.bytesperline
+						: (int)fmt.fmt.pix.width;
 
 	// Allocate buffers for video frames.
 	struct v4l2_requestbuffers req;
@@ -271,11 +284,13 @@ bool sr_webcam_open(sr_webcam_device* device)
 	req.memory = V4L2_MEMORY_MMAP;
 	// If we can't get at least two buffers, skip.
 	if(_sr_webcam_wait_ioctl(fid, VIDIOC_REQBUFS, &req) == -1 || req.count < 2) {
+		close(fid);
 		free(stream);
 		return false;
 	}
 	_sr_webcam_buffer* buffers = (_sr_webcam_buffer*)calloc(req.count, sizeof(_sr_webcam_buffer));
 	if(!buffers) {
+		close(fid);
 		free(stream);
 		return false;
 	}
@@ -292,6 +307,7 @@ bool sr_webcam_open(sr_webcam_device* device)
 				munmap(buffers[obid].start, buffers[obid].length);
 			}
 			free(buffers);
+			close(fid);
 			free(stream);
 			return false;
 		}
@@ -302,6 +318,7 @@ bool sr_webcam_open(sr_webcam_device* device)
 				munmap(buffers[obid].start, buffers[obid].length);
 			}
 			free(buffers);
+			close(fid);
 			free(stream);
 			return false;
 		}
@@ -346,6 +363,7 @@ void sr_webcam_start(sr_webcam_device* device) {
 		if(_sr_webcam_wait_ioctl(stream->fid, VIDIOC_STREAMON, &type) == -1) {
 			return;
 		}
+		stream->shouldStop = 0;
 		pthread_create(&stream->thread, NULL, &_sr_webcam_callback_loop, device->stream);
 		device->running = 1;
 	}
@@ -355,10 +373,12 @@ void sr_webcam_stop(sr_webcam_device* device) {
 	if(device->stream && device->running == 1) {
 		_sr_webcam_v4lInfos* stream = (_sr_webcam_v4lInfos*)(device->stream);
 		enum v4l2_buf_type type		= V4L2_BUF_TYPE_VIDEO_CAPTURE;
-		if(_sr_webcam_wait_ioctl(stream->fid, VIDIOC_STREAMOFF, &type) == -1) {
-			return;
-		}
-		pthread_cancel(stream->thread);
+		_sr_webcam_wait_ioctl(stream->fid, VIDIOC_STREAMOFF, &type);
+		// Ask the capture thread to exit and wait for it: teardown unmaps the
+		// buffers the loop reads, so the thread must be gone first. Join even
+		// if STREAMOFF failed.
+		stream->shouldStop = 1;
+		pthread_join(stream->thread, NULL);
 		device->running = 0;
 	}
 }
@@ -376,6 +396,8 @@ void sr_webcam_delete(sr_webcam_device* device) {
 		}
 		free(buffers);
 		close(stream->fid);
+		free(stream);
+		device->stream = NULL;
 	}
 	delete device;
 }

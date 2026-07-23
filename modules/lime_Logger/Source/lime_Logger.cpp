@@ -10,12 +10,26 @@ JUCE_IMPLEMENT_SINGLETON ( Logger )
 
 //-------------------------------------------------------------------------------------------------
 
+juce::String LogMessage::formatTimestamp ( const time_t t )
+{
+	// Reentrant localtime: this runs on whatever thread logs
+	std::tm	tmBuf {};
+
+	#if JUCE_WINDOWS
+		localtime_s ( &tmBuf, &t );
+	#else
+		localtime_r ( &t, &tmBuf );
+	#endif
+
+	char	dstTime[ 100 ] = { 0 };
+	std::strftime ( dstTime, sizeof ( dstTime ), "%T", &tmBuf );
+
+	return juce::String ( dstTime );
+}
+//-------------------------------------------------------------------------------------------------
+
 juce::String LogMessage::toString ()
 {
-	// Compose final message
-	char	dstTime[ 100 ] = { 0 };
-	std::strftime ( dstTime, sizeof ( dstTime ), "%T", std::localtime ( &timeStamp ) );
-
 	juce::String code;
 	switch ( level )
 	{
@@ -27,7 +41,7 @@ juce::String LogMessage::toString ()
 		default: jassertfalse; 		code = "   "; break;
 	}
 
-	return juce::String ( dstTime ) + ": " + code + " - " + description;
+	return timeText + ": " + code + " - " + description;
 }
 //-------------------------------------------------------------------------------------------------
 
@@ -56,13 +70,16 @@ void Logger::logMessage ( const juce::String& messageText )
 	juce::ScopedLock	sl ( self->lock );
 
 	auto	level = LogLevel::log;
+	auto	tagged = true;
 
 	if (		messageText.startsWith ( "[E]" ) )	level = LogLevel::error;
 	else if (	messageText.startsWith ( "[W]" ) )	level = LogLevel::warning;
 	else if (	messageText.startsWith ( "[I]" ) )	level = LogLevel::info;
 	else if (	messageText.startsWith ( "[D]" ) )	level = LogLevel::debuglog;
+	else if (	messageText.startsWith ( "[L]" ) )	level = LogLevel::log;
+	else		tagged = false;	// e.g. JUCE-internal "[..." lines: keep them intact
 
-	LogMessage	msg = { messageText.startsWithChar ( '[' ) ? messageText.substring ( 3 ) : messageText, level };
+	LogMessage	msg = { tagged ? messageText.substring ( 3 ) : messageText, level };
 
 	self->messages.add ( msg );
 	self->triggerAsyncUpdate ();
@@ -240,6 +257,8 @@ juce::String Logger::getSystemStats ()
 juce::String Logger::getAsString ()
 {
 	auto	text = getSystemStats ();
+
+	juce::ScopedLock	sl ( lock );
 
 	if ( logStream != nullptr )
 		text += mergeLogFiles ();

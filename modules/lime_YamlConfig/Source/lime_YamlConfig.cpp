@@ -147,8 +147,8 @@ juce::String lime::YamlConfig::toYamlString () const
 
 					using	T = std::decay_t<decltype( arg )>;
 
-					if constexpr ( std::is_same_v<T, juce::String> )
-						output << " " << arg.quoted () << "\n";
+					if constexpr ( std::is_same_v<T, std::string> )
+						output << " " << juce::String ( arg ).quoted () << "\n";
 					else if constexpr ( std::is_same_v<T, bool> )
 						output << ( arg ? " true\n" : " false\n" );
 					else if constexpr ( std::is_same_v<T, vec2f> || std::is_same_v<T, vec2i> )

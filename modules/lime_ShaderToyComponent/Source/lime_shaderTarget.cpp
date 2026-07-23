@@ -120,9 +120,9 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 				juce::gl::glBindTexture ( juce::gl::GL_TEXTURE_2D, 0 );
 				juce::gl::glBindTexture ( juce::gl::GL_TEXTURE_3D, 0 );
 
-				if ( texture->isValid () )
+				if ( texture->lock.try_lock () )
 				{
-					if ( texture->lock.try_lock () )
+					if ( texture->isValid () )
 					{
 						std::visit ( [ texture ] ( auto&& arg )
 						{
@@ -155,9 +155,9 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 							}
 
 						}, texture->source );
-
-						texture->lock.unlock ();
 					}
+
+					texture->lock.unlock ();
 				}
 
 				const auto	newTextureID = texture->glTexture.getTextureID ();
@@ -659,6 +659,8 @@ void shaderTarget::compileOpenGLShaders ()
 
 			if ( auto texture = tex.tex )
 			{
+				const std::lock_guard	tsl ( texture->lock );
+
 				fragmentPrefix += "uniform ";
 				fragmentPrefix += std::visit ( [ & ] ( auto&& arg ) -> std::string
 				{
@@ -714,6 +716,8 @@ void shaderTarget::compileOpenGLShaders ()
 
 void shaderTarget::setUniform_f ( const std::string& uniName, const float n1 )
 {
+	const std::lock_guard	sl ( uniformsLock );
+
 	auto&	uni = uniforms[ uniName ];
 
 	uni.isFloat = true;
@@ -730,12 +734,14 @@ void shaderTarget::setUniform_f ( const std::string& uniName, const std::initial
 
 void shaderTarget::setUniform_f ( const std::string& uniName, const std::span<const float>& values )
 {
+	const std::lock_guard	sl ( uniformsLock );
+
 	auto&	uni = uniforms[ uniName ];
 
 	jassert ( values.size () <= std::size ( uni.fValues ) );
 
 	uni.isFloat = true;
-	uni.count = int ( values.size () );
+	uni.count = int ( std::min ( values.size (), std::size ( uni.fValues ) ) );
 	for ( auto i = 0; i < uni.count; ++i )
 		uni.fValues[ i ] = values[ i ];
 }
@@ -743,6 +749,8 @@ void shaderTarget::setUniform_f ( const std::string& uniName, const std::span<co
 
 void shaderTarget::setUniform_i ( const std::string& uniName, const int n1 )
 {
+	const std::lock_guard	sl ( uniformsLock );
+
 	auto&	uni = uniforms[ uniName ];
 
 	uni.isFloat = false;
@@ -753,6 +761,8 @@ void shaderTarget::setUniform_i ( const std::string& uniName, const int n1 )
 
 void shaderTarget::setUniform_vec2 ( const std::string& uniName, const float n1, const float n2 )
 {
+	const std::lock_guard	sl ( uniformsLock );
+
 	auto&	uni = uniforms[ uniName ];
 
 	uni.isFloat = true;
@@ -765,6 +775,8 @@ void shaderTarget::setUniform_vec2 ( const std::string& uniName, const float n1,
 
 void shaderTarget::setUniform_vec3 ( const std::string& uniName, const float n1, const float n2, const float n3 )
 {
+	const std::lock_guard	sl ( uniformsLock );
+
 	auto&	uni = uniforms[ uniName ];
 
 	uni.isFloat = true;
@@ -778,6 +790,8 @@ void shaderTarget::setUniform_vec3 ( const std::string& uniName, const float n1,
 
 void shaderTarget::setUniform_vec4 ( const std::string& uniName, const float n1, const float n2, const float n3, const float n4 )
 {
+	const std::lock_guard	sl ( uniformsLock );
+
 	auto&	uni = uniforms[ uniName ];
 
 	uni.isFloat = true;
@@ -792,6 +806,8 @@ void shaderTarget::setUniform_vec4 ( const std::string& uniName, const float n1,
 
 void shaderTarget::setUniform_ivec4 ( const std::string& uniName, const int n1, const int n2, const int n3, const int n4 )
 {
+	const std::lock_guard	sl ( uniformsLock );
+
 	auto&	uni = uniforms[ uniName ];
 
 	uni.isFloat = false;
@@ -834,12 +850,16 @@ void shaderTarget::uniform::update ( const int index )
 
 void shaderTarget::removeUniform ( const std::string& uniName )
 {
+	const std::lock_guard	sl ( uniformsLock );
+
 	uniforms.erase ( uniName );
 }
 //-----------------------------------------------------------------------------
 
 void shaderTarget::resetUniforms ()
 {
+	const std::lock_guard	sl ( uniformsLock );
+
 	for ( auto& [ uniName, uni ] : uniforms )
 	{
 		uni.uniformPtr[ 0 ].reset ();
@@ -850,6 +870,8 @@ void shaderTarget::resetUniforms ()
 
 void shaderTarget::updateUniforms ( juce::OpenGLShaderProgram* prg, const int index )
 {
+	const std::lock_guard	sl ( uniformsLock );
+
 	for ( auto& [ uniName, uni ] : uniforms )
 	{
 		if ( ! uni.uniformPtr[ index ] )

@@ -12,6 +12,9 @@
 #include <shlwapi.h>
 
 #include <algorithm>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <string>
 
 struct IMFMediaType;
@@ -150,6 +153,14 @@ public:
 
 	STDMETHODIMP OnFlush ( DWORD ) override
 	{
+		// Runs on the MF work-queue thread; stop() waits for this before the
+		// reader may be released (MF's async source-reader contract)
+		{
+			const std::lock_guard	sl ( flushMutex );
+			flushDone = true;
+		}
+		flushCV.notify_all ();
+
 		return S_OK;
 	}
 	//-----------------------------------------------------------------------------
@@ -190,8 +201,9 @@ public:
 			}
 		}
 
-		// Schedule next sample
-		videoReader->ReadSample ( dwStreamIndex, 0, NULL, NULL, NULL, NULL );
+		// Schedule next sample (the reader can be gone on error/teardown paths)
+		if ( videoReader )
+			videoReader->ReadSample ( dwStreamIndex, 0, NULL, NULL, NULL, NULL );
 
 		return S_OK;
 	}
@@ -199,13 +211,31 @@ public:
 
 	bool setupWith ( int id, int framerate, int w, int h )
 	{
-		// Prepare video devices query
+		// All the COM objects used during setup, released on EVERY exit path.
+		// The reader keeps its own references to what it needs (media source,
+		// callback), so releasing these after creation is correct
 		IMFAttributes*	msAttr = nullptr;
+		IMFMediaSource*	mSrc = nullptr;
+		IMFAttributes*	srAttr = nullptr;
+		IMFMediaType*	typeOut = nullptr;
+
+		const auto	releaseLocals = [ & ] () noexcept
+		{
+			SafeRelease ( &typeOut );
+			SafeRelease ( &srAttr );
+			SafeRelease ( &mSrc );
+			SafeRelease ( &msAttr );
+		};
+
+		// Prepare video devices query
 		if ( FAILED ( MFCreateAttributes ( &msAttr, 1 ) ) )
 			return false;
 
 		if ( FAILED ( msAttr->SetGUID ( MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID ) ) )
+		{
+			releaseLocals ();
 			return false;
+		}
 
 		IMFActivate**	ppDevices = nullptr;
 		UINT32			count = 0;
@@ -214,6 +244,7 @@ public:
 		if ( FAILED ( MFEnumDeviceSources ( msAttr, &ppDevices, &count ) ) || count == 0 || id < 0 )
 		{
 			CoTaskMemFree ( ppDevices );
+			releaseLocals ();
 			return false;
 		}
 
@@ -232,6 +263,7 @@ public:
 		if ( ! ppDevices[ _id ] )
 		{
 			CoTaskMemFree ( ppDevices );
+			releaseLocals ();
 			return false;
 		}
 
@@ -256,12 +288,11 @@ public:
 		}
 
 		// Set source reader parameters
-		IMFMediaSource*	mSrc = nullptr;
-		IMFAttributes*	srAttr = nullptr;
 		if ( FAILED ( ppDevices[ _id ]->ActivateObject ( __uuidof( IMFMediaSource ), (void**)&mSrc ) ) || ! mSrc )
 		{
 			ppDevices[ _id ]->Release ();
 			CoTaskMemFree ( ppDevices );
+			releaseLocals ();
 			return false;
 		}
 
@@ -270,6 +301,7 @@ public:
 		{
 			ppDevices[ _id ]->Release ();
 			CoTaskMemFree ( ppDevices );
+			releaseLocals ();
 			return false;
 		}
 
@@ -284,6 +316,7 @@ public:
 		{
 			ppDevices[ _id ]->Release ();
 			CoTaskMemFree ( ppDevices );
+			releaseLocals ();
 			return false;
 		}
 
@@ -292,6 +325,7 @@ public:
 		{
 			ppDevices[ _id ]->Release ();
 			CoTaskMemFree ( ppDevices );
+			releaseLocals ();
 			return false;
 		}
 
@@ -322,6 +356,8 @@ public:
 				continue;
 
 			SRWebcamFormat	format ( pType );
+			SafeRelease ( &pType );	// one native type per iteration, release each
+
 			// We only care about video types
 			if ( format.type != MFMediaType_Video )
 			{
@@ -370,15 +406,16 @@ public:
 		{
 			ppDevices[ _id ]->Release ();
 			CoTaskMemFree ( ppDevices );
+			releaseLocals ();
 			return false;
 		}
 
 		// We found the best available stream and format, configure the output format
-		IMFMediaType*	typeOut = NULL;
 		if ( FAILED ( MFCreateMediaType ( &typeOut ) ) )
 		{
 			ppDevices[ _id ]->Release ();
 			CoTaskMemFree ( ppDevices );
+			releaseLocals ();
 			return false;
 		}
 
@@ -403,6 +440,7 @@ public:
 			SafeRelease ( &videoReader );
 			ppDevices[ _id ]->Release ();
 			CoTaskMemFree ( ppDevices );
+			releaseLocals ();
 			return false;
 		}
 
@@ -440,6 +478,7 @@ public:
 		captureFormat = SRWebcamFormat ( typeOut );
 		ppDevices[ _id ]->Release ();
 		CoTaskMemFree ( ppDevices );
+		releaseLocals ();
 
 		return true;
 	}
@@ -457,8 +496,21 @@ public:
 
 	void stop ()
 	{
-		if ( videoReader && SUCCEEDED ( videoReader->Flush ( selectedStream ) ) )
+		if ( ! videoReader )
 			return;
+
+		{
+			const std::lock_guard	sl ( flushMutex );
+			flushDone = false;
+		}
+
+		if ( SUCCEEDED ( videoReader->Flush ( selectedStream ) ) )
+		{
+			std::unique_lock	lk ( flushMutex );
+			flushCV.wait_for ( lk, std::chrono::seconds ( 2 ), [ this ] { return flushDone; } );
+
+			return;
+		}
 
 		removeReader ();
 	}
@@ -479,9 +531,17 @@ public:
 
 private:
 	SRWebcamMFContext&	context = SRWebcamMFContext::getContext ();
-	IMFSourceReader*	videoReader;
-	DWORD				selectedStream;
-	long				refCount = 0;
+	IMFSourceReader*	videoReader = nullptr;
+	DWORD				selectedStream = 0;
+
+	// The creating sr_webcam_open holds the initial reference; MF's refs come
+	// and go on top of it, sr_webcam_delete releases it (COM delete-on-zero)
+	long				refCount = 1;
+
+	// OnFlush handshake, see stop()
+	std::mutex				flushMutex;
+	std::condition_variable	flushCV;
+	bool					flushDone = false;
 };
 //-----------------------------------------------------------------------------
 
@@ -496,6 +556,7 @@ bool sr_webcam_open ( sr_webcam_device* device )
 	if ( auto res = stream->setupWith ( device->deviceId, device->framerate, device->width, device->height ); ! res )
 	{
 		device->stream = nullptr;
+		stream->Release ();	// drop the creation reference, frees the stream
 		return false;
 	}
 
@@ -534,10 +595,16 @@ void sr_webcam_stop ( sr_webcam_device* device )
 
 void sr_webcam_delete ( sr_webcam_device* device )
 {
+	// stop() is synchronous (waits for OnFlush), so after it returns no
+	// callback references `device` or the reader anymore
 	sr_webcam_stop ( device );
 
 	if ( auto stream = (SRWebcamVideoStreamMF*)( device->stream ) )
+	{
 		stream->removeReader ();
+		stream->Release ();	// drop the creation reference, frees the stream
+		device->stream = nullptr;
+	}
 
 	delete device;
 }

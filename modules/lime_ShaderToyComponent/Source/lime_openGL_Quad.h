@@ -55,7 +55,7 @@ private:
 	int			queryIndex = 0;
 	GLuint64	elapsedTime = 0;
 	float		elapsedTimeMs = 0.0f;
-	GLuint		queryID[ 2 ];
+	GLuint		queryID[ 2 ] = { 0, 0 };
 
 	// Vextex and indice buffers
 	GLuint		quadVAO = 0;

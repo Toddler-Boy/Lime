@@ -179,11 +179,32 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	{
 		auto	ovlImg = juce::SoftwareImageType ().convert ( juce::ImageFileFormat::loadFrom ( root ) );
 
+		if ( ! ovlImg.isValid () )
+		{
+			Z_ERR ( "Overlay image failed to load: " << root.getFullPathName () );
+			dst->unload ();
+			return;
+		}
+
+		if ( ! ovlImg.isARGB () )
+		{
+			Z_ERR ( "Overlay image has no alpha channel: " << root.getFullPathName () );
+			dst->unload ();
+			return;
+		}
+
 		dst->fromImage ( ovlImg );
 		overlayImgRect = ovlImg.getBounds ().toFloat ();
 
 		// Find hole in overlay (where the screen is)
 		const auto	pixelHole = getHoleBounds ( ovlImg );
+		if ( pixelHole.isEmpty () )
+		{
+			Z_ERR ( "Overlay image has no transparent screen hole: " << root.getFullPathName () );
+			dst->unload ();
+			return;
+		}
+
 		const auto	hole = expandHoleBounds ( pixelHole, res.scaledWidth * 0.937f / float ( res.scaledHeight ), 1.0f );
 
 		ovlyCenter = hole.getCentre ();
@@ -1070,7 +1091,7 @@ void CRTEmulation::setLumaChromaPalette ( const std::span<float>& palette )
 	indexTarget->lock ();
 	lumaChromaTarget->lock ();
 
-	lumaChromaPaletteSrc = { palette, width / channels, height };
+	lumaChromaPaletteSrc = { std::vector<float> ( palette.begin (), palette.end () ), width / channels, height };
 	lumaChromaPalette->fromFloatVector ( lumaChromaPaletteSrc, false );
 
 	lumaChromaTarget->unlock ();

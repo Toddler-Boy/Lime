@@ -17,7 +17,9 @@ void openGL_Quad::release ()
 	// is deleted.
 	jassert ( ( ! quadVBO && ! quadIBO ) || ownerContext == juce::OpenGLContext::getCurrentContext () );
 
-	if ( ! ownerContext )
+	// GL calls are only valid with our context current; without it the handles
+	// leak until the context itself dies (same rule as openGL_Texture::release)
+	if ( ! ownerContext || ownerContext != juce::OpenGLContext::getCurrentContext () )
 		return;
 
 	safeDeleteQuery ( queryID[ 0 ] );

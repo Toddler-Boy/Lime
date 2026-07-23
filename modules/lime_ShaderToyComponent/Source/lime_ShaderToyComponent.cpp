@@ -499,7 +499,11 @@ void ShaderToyComponent::parsePipeline ()
 					{
 						for ( auto& uni : *tgtUniforms.getArray () )
 						{
-							const auto&	prop = *uni.getDynamicObject ()->getProperties ().begin ();
+							const auto	uniObj = uni.getDynamicObject ();
+							if ( ! uniObj || uniObj->getProperties ().isEmpty () )
+								continue;
+
+							const auto&	prop = *uniObj->getProperties ().begin ();
 
 							const auto	uniName = prop.name.toString ().toStdString ();
 
@@ -545,7 +549,11 @@ void ShaderToyComponent::parsePipeline ()
 		{
 			for ( auto& uni : *glbUniforms.getArray () )
 			{
-				const auto& prop = *uni.getDynamicObject ()->getProperties ().begin ();
+				const auto	uniObj = uni.getDynamicObject ();
+				if ( ! uniObj || uniObj->getProperties ().isEmpty () )
+					continue;
+
+				const auto& prop = *uniObj->getProperties ().begin ();
 
 				const auto	uniName = prop.name.toString ().toStdString ();
 
@@ -791,8 +799,6 @@ void ShaderToyComponent::fileChanged ( const juce::File& file, gin::FileSystemWa
 
 		return;
 	}
-
-	const auto	name = file.getFullPathName ().replaceCharacter ( '\\', '/' );
 
 	// Build list of all shaders that need to be reloaded, based on dependencies
 	{

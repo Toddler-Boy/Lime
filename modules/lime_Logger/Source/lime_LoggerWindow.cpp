@@ -100,11 +100,7 @@ juce::String LoggerWindow::Content::getNameForRow ( int row )
 	{
 		const auto message = owner.messages[ row ];
 
-		// Compose final message
-		char dstTime[ 100 ] = { 0 };
-		std::strftime ( dstTime, sizeof ( dstTime ), "%T", std::localtime ( &message.timeStamp ) );
-
-		return juce::String ( dstTime ) + " - " + message.description;
+		return message.timeText + " - " + message.description;
 	}
 
 	return {};
@@ -125,11 +121,7 @@ void LoggerWindow::Content::paintListBoxItem ( int row, juce::Graphics& g, int w
 			{	juce::Colour ( 0xff'FC5454 ),		juce::Colours::black	},	// err
 		};
 
-		// Compose final message
-		char dstTime[ 100 ] = { 0 };
-		std::strftime ( dstTime, sizeof ( dstTime ), "%T ", std::localtime ( &message.timeStamp ) );
-
-		const auto	text = juce::String ( dstTime ) + message.description;
+		const auto	text = message.timeText + " " + message.description;
 
 		g.setFont ( owner.opts.font );
 

@@ -48,7 +48,11 @@ struct LogMessage
 
 	juce::String toString ();
 
+	// Thread-safe strftime of a unix timestamp (reentrant localtime)
+	[[ nodiscard ]] static juce::String formatTimestamp ( const time_t t );
+
 	const time_t		timeStamp = std::chrono::system_clock::to_time_t (std::chrono::system_clock::now ());
+	const juce::String	timeText = formatTimestamp ( timeStamp );	// "HH:MM:SS", formatted once
 	const juce::String	description;
 	const LogLevel 		level = LogLevel::debuglog;
 };
