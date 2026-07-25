@@ -2,15 +2,16 @@
 
 #include <chrono>
 
-#define	Z_ERR(_m)		{ juce::String zTempDbgBuf ( "[E]" ); zTempDbgBuf << _m; juce::Logger::writeToLog ( zTempDbgBuf ); }
-#define	Z_WARN(_m)		{ juce::String zTempDbgBuf ( "[W]" ); zTempDbgBuf << _m; juce::Logger::writeToLog ( zTempDbgBuf ); }
-#define	Z_INFO(_m)		{ juce::String zTempDbgBuf ( "[I]" ); zTempDbgBuf << _m; juce::Logger::writeToLog ( zTempDbgBuf ); }
-#define Z_LOG(_m)		{ juce::String zTempDbgBuf ( "[L]" ); zTempDbgBuf << _m; juce::Logger::writeToLog ( zTempDbgBuf ); }
+#define	Z_ERR(_m)		do { juce::String zTempDbgBuf ( "[E]" ); zTempDbgBuf << _m; juce::Logger::writeToLog ( zTempDbgBuf ); } while ( false )
+#define	Z_WARN(_m)		do { juce::String zTempDbgBuf ( "[W]" ); zTempDbgBuf << _m; juce::Logger::writeToLog ( zTempDbgBuf ); } while ( false )
+#define	Z_INFO(_m)		do { juce::String zTempDbgBuf ( "[I]" ); zTempDbgBuf << _m; juce::Logger::writeToLog ( zTempDbgBuf ); } while ( false )
+#define Z_LOG(_m)		do { juce::String zTempDbgBuf ( "[L]" ); zTempDbgBuf << _m; juce::Logger::writeToLog ( zTempDbgBuf ); } while ( false )
 
 #ifdef _DEBUG
-	#define Z_DLOG(_m)	{ juce::String zTempDbgBuf ( "[D]" ); zTempDbgBuf << _m; juce::Logger::writeToLog ( zTempDbgBuf ); }
+	#define Z_DLOG(_m)	do { juce::String zTempDbgBuf ( "[D]" ); zTempDbgBuf << _m; juce::Logger::writeToLog ( zTempDbgBuf ); } while ( false )
 #else
-	#define Z_DLOG(_m)
+	// Still a statement, so an if/else around it compiles the same in both configurations
+	#define Z_DLOG(_m)	do { } while ( false )
 #endif
 
 namespace lime
