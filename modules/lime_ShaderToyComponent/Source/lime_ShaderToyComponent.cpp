@@ -101,10 +101,19 @@ ShaderToyComponent::ShaderToyComponent ( const bool canHaveChildren, const int _
 	fsWatcher.addListener ( this );
 	fsWatcher.coalesceEvents ( 50 );
 
-	#if JUCE_MAC
-		openGLContext.setOpenGLVersionRequired ( juce::OpenGLContext::OpenGLVersion::openGL4_1 );
+	#if JUCE_MAJOR_VERSION >= 9
+		#if JUCE_MAC
+			openGLContext.setPreferredVersion ( { 4, 1 } );
+		#else
+			openGLContext.setPreferredVersion ( { 4, 3 } );
+		#endif
+		openGLContext.setPreferredProfile ( juce::OpenGLProfile::core );
 	#else
-		openGLContext.setOpenGLVersionRequired ( juce::OpenGLContext::OpenGLVersion::openGL4_3 );
+		#if JUCE_MAC
+			openGLContext.setOpenGLVersionRequired ( juce::OpenGLContext::OpenGLVersion::openGL4_1 );
+		#else
+			openGLContext.setOpenGLVersionRequired ( juce::OpenGLContext::OpenGLVersion::openGL4_3 );
+		#endif
 	#endif
 
 	// Attach the OpenGL context
