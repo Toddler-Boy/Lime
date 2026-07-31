@@ -834,10 +834,10 @@ void ShaderToyComponent::fileChanged ( const juce::File& file, gin::FileSystemWa
 				shader->setShaders ( loadShader ( shader->getFile () ) );
 	}
 
-	// Reload textures
+	// Reload textures (the file may exist only through the content loader, not on disk)
 	for ( auto& txt : textures )
 		if ( ! txt->glTexture.isTarget () && txt->load )
-			if ( auto txtFile = findFile ( txt->name ); txtFile == file && txtFile.existsAsFile () )
+			if ( auto txtFile = findFile ( txt->name ); txtFile == file && content::exists ( txtFile ) )
 				txt->load ( txt.get (), txtFile );
 }
 //-----------------------------------------------------------------------------

@@ -609,6 +609,15 @@ void CRTEmulation::setRoot ( const juce::File& _root )
 	ShaderToyComponent::setRoot ( _root, {}, "Shaders", "Overlays" );
 	root = _root;
 
+	rescanOverlays ();
+}
+//-----------------------------------------------------------------------------
+
+void CRTEmulation::rescanOverlays ()
+{
+	// Re-enumerate the overlay and CRT-mask pick lists; hosts whose content loader
+	// merges extra entries (user folders) call this when those change on disk
+
 	//
 	// Load available overlay profiles
 	//

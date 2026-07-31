@@ -107,6 +107,7 @@ public:
 
 	// this
 	void setRoot ( const juce::File& _root );
+	void rescanOverlays ();
 	void updateZoom ();
 
 	[[ nodiscard ]] const juce::StringArray& getOverlays () const	{	return overlayProfiles;	}

@@ -4,13 +4,9 @@
 
 //-----------------------------------------------------------------------------
 
-// All file access of the shader stack funnels through here. By default every
-// call reads the real file system; a host that ships its data inside an
-// archive installs a Loader once and delivers the bytes itself - the
-// juce::Files the components build then act as pure lookup keys.
-//
-// With a loader installed there are no real files, so the components skip
-// their hot-reload watchers; without one, nothing changes at all.
+// All shader-stack file access funnels through here: the real file system by
+// default, or a host-installed Loader that delivers archived bytes for the
+// juce::Files the components build (then mere lookup keys, no watchers).
 
 namespace lime::content
 {
