@@ -16,6 +16,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <string>
+#include <vector>
 
 struct IMFMediaType;
 struct IMFActivate;
@@ -278,6 +279,7 @@ public:
 				auto	sizeNeeded = WideCharToMultiByte ( CP_UTF8, 0, szFriendlyName, szFriendlyLength, nullptr, 0, nullptr, nullptr );
 				auto	res = std::string ( sizeNeeded, 0 );
 				WideCharToMultiByte ( CP_UTF8, 0, szFriendlyName, szFriendlyLength, &res[ 0 ], sizeNeeded, nullptr, nullptr );
+				CoTaskMemFree ( szFriendlyName );
 
 				return res;
 			};
@@ -540,6 +542,61 @@ private:
 	std::condition_variable	flushCV;
 	bool					flushDone = false;
 };
+//-----------------------------------------------------------------------------
+
+std::vector<std::string> sr_webcam_list_devices ()
+{
+	std::vector<std::string>	names;
+
+	SRWebcamMFContext::getContext ();
+
+	IMFAttributes*	msAttr = nullptr;
+	if ( FAILED ( MFCreateAttributes ( &msAttr, 1 ) ) )
+		return names;
+
+	if ( SUCCEEDED ( msAttr->SetGUID ( MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID ) ) )
+	{
+		IMFActivate**	ppDevices = nullptr;
+		UINT32			count = 0;
+
+		if ( SUCCEEDED ( MFEnumDeviceSources ( msAttr, &ppDevices, &count ) ) )
+		{
+			for ( UINT32 i = 0; i < count; ++i )
+			{
+				// The index into the list is the deviceId open uses, so a
+				// nameless device still occupies its slot
+				std::string	name;
+
+				if ( ppDevices[ i ] )
+				{
+					WCHAR*	wide = nullptr;
+					UINT32	wideLength = 0;
+
+					if ( SUCCEEDED ( ppDevices[ i ]->GetAllocatedString ( MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &wide, &wideLength ) ) )
+					{
+						const auto	sizeNeeded = WideCharToMultiByte ( CP_UTF8, 0, wide, wideLength, nullptr, 0, nullptr, nullptr );
+						name.resize ( size_t ( sizeNeeded ) );
+						WideCharToMultiByte ( CP_UTF8, 0, wide, wideLength, name.data (), sizeNeeded, nullptr, nullptr );
+						CoTaskMemFree ( wide );
+					}
+
+					ppDevices[ i ]->Release ();
+				}
+
+				if ( name.empty () )
+					name = "Camera " + std::to_string ( i + 1 );
+
+				names.push_back ( std::move ( name ) );
+			}
+
+			CoTaskMemFree ( ppDevices );
+		}
+	}
+
+	SafeRelease ( &msAttr );
+
+	return names;
+}
 //-----------------------------------------------------------------------------
 
 bool sr_webcam_open ( sr_webcam_device* device )

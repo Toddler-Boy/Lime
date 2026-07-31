@@ -84,6 +84,7 @@ public:
 
 		// Webcam
 		bool			webcam = true;
+		juce::String	webcamDevice;	// Capture-device name, empty = first
 		int8_t			webcamBrightness = 50;
 		int8_t			webcamContrast = 50;
 		int8_t			webcamSaturation = 50;
@@ -213,8 +214,14 @@ private:
 	// Webcam stuff
 	//
 	[[ nodiscard ]] bool isWebcamNeeded () const;
-	void addWebcamListener ();
+	void addWebcamListener ( const juce::String& deviceName );
 	void removeWebcamListener ();
+
+	// Wanted device travels message thread -> camera thread under the lock;
+	// openedWebcamDevice is camera-thread only
+	juce::CriticalSection	webcamDeviceLock;
+	juce::String			wantedWebcamDevice;
+	juce::String			openedWebcamDevice;
 
 	// Multipliers
 	float	mulDaytime = 1.0f;
@@ -230,6 +237,7 @@ private:
 	void run () override;
 
 	bool	isCamInUse = false;
+	bool	webcamOpenFailed = false;	// Camera-thread only
 	std::unique_ptr<Webcam>		camera;
 	std::atomic<pixFmt>			camPixFmt = pixFmt ( NV12 | matrixBT601 | rangeLimited );
 

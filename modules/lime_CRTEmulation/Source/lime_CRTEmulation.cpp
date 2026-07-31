@@ -777,6 +777,11 @@ bool CRTEmulation::parseOverlayProfile ( const juce::String& profileName )
 
 void CRTEmulation::setSettings ( const settings& set )
 {
+	{
+		const juce::ScopedLock	sl ( webcamDeviceLock );
+		wantedWebcamDevice = set.webcamDevice;
+	}
+
 	const auto	raw = set.crtEmulation ? 0 : 1;
 
 	//
@@ -1229,14 +1234,36 @@ void CRTEmulation::run ()
 {
 	do
 	{
-		if ( isShowing () && isWebcamNeeded () )
+		const auto	wanted = [ this ]
 		{
-			addWebcamListener ();
-			if ( ! camera )
-				return;
+			const juce::ScopedLock	sl ( webcamDeviceLock );
+			return wantedWebcamDevice;
+		} ();
+
+		// A different device was picked: drop the open camera (or a failed
+		// attempt), the code below reopens it
+		if ( wanted != openedWebcamDevice )
+		{
+			removeWebcamListener ();
+			camera.reset ();
+			webcamOpenFailed = false;
+		}
+
+		// A device that failed to open is not retried until the pick changes
+		// or the webcam is toggled off and on
+		if ( isShowing () && isWebcamNeeded () && ! webcamOpenFailed )
+		{
+			addWebcamListener ( wanted );
+			webcamOpenFailed = camera == nullptr;
 		}
 		else
+		{
+			// Webcam off or page hidden: release the device completely, only
+			// a dark camera LED proves to the user that nothing records
 			removeWebcamListener ();
+			camera.reset ();
+			webcamOpenFailed = false;
+		}
 
 		wait ( 100.0 );
 
@@ -1246,11 +1273,27 @@ void CRTEmulation::run ()
 }
 //-----------------------------------------------------------------------------
 
-void CRTEmulation::addWebcamListener ()
+void CRTEmulation::addWebcamListener ( const juce::String& deviceName )
 {
 	if ( ! camera )
 	{
-		camera = std::make_unique<Webcam> ( 1920, 1080, 60 );
+		auto resolveIndex = [] ( const juce::String& name ) -> int
+		{
+			if ( name.isEmpty () )
+				return 0;
+
+			const auto	devices = Webcam::getDeviceNames ();
+
+			for ( auto i = 0; i < int ( devices.size () ); ++i )
+				if ( name.equalsIgnoreCase ( juce::String ( devices[ i ] ) ) )
+					return i;
+
+			return 0;	// Unknown (unplugged) device: the first camera
+		};
+
+		openedWebcamDevice = deviceName;
+
+		camera = std::make_unique<Webcam> ( 1920, 1080, 60, resolveIndex ( deviceName ) );
 		if ( ! camera->getError ().empty () )
 		{
 			Z_WARN ( "Webcam error: " << camera->getError () );

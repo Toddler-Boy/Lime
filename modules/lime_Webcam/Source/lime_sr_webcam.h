@@ -1,5 +1,8 @@
 #pragma once
 
+#include <string>
+#include <vector>
+
 struct _sr_webcam_device;
 using sr_webcam_device = struct _sr_webcam_device;
 
@@ -31,6 +34,10 @@ enum pixFmt : int
 using sr_webcam_callback = void ( * )( sr_webcam_device* device, void* dataY, void* dataUV, int width, int height, int strideY, int strideUV, pixFmt format );
 
 bool sr_webcam_create ( sr_webcam_device** device, int deviceId );
+
+// Capture-device names; the index into this list is the deviceId that
+// sr_webcam_create opens (both walk the same platform enumeration)
+std::vector<std::string> sr_webcam_list_devices ();
 
 void sr_webcam_set_format ( sr_webcam_device* device, int width, int height, int framerate );
 void sr_webcam_set_callback ( sr_webcam_device* device, sr_webcam_callback callback );

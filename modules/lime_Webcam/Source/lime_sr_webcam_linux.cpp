@@ -128,6 +128,29 @@ void* _sr_webcam_callback_loop ( void* arg )
 	return NULL;
 }
 
+std::vector<std::string> sr_webcam_list_devices()
+{
+	// Must walk /dev/video* with the same capture filter sr_webcam_open uses,
+	// so positions line up with its deviceId counting
+	std::vector<std::string> names;
+	for(int i = 0; i < 64; ++i) {
+		char file[256];
+		snprintf(file, 255, "/dev/video%d", i);
+		int fid = open(file, O_RDWR | O_NONBLOCK, 0);
+		if(fid < 0)
+			continue;
+		struct v4l2_capability probeCap;
+		if(_sr_webcam_wait_ioctl(fid, VIDIOC_QUERYCAP, &probeCap) == 0
+			&& (probeCap.capabilities & V4L2_CAP_VIDEO_CAPTURE)
+			&& (probeCap.capabilities & V4L2_CAP_STREAMING)) {
+			const char* card = (const char*)probeCap.card;
+			names.push_back(card[0] ? card : file);
+		}
+		close(fid);
+	}
+	return names;
+}
+
 bool sr_webcam_open(sr_webcam_device* device)
 {
 	// Already setup.

@@ -4,9 +4,9 @@ namespace lime
 {
 //-----------------------------------------------------------------------------
 
-Webcam::Webcam ( int w, int h, int fps )
+Webcam::Webcam ( int w, int h, int fps, int deviceIndex )
 {
-	sr_webcam_create ( &device, 0 );
+	sr_webcam_create ( &device, deviceIndex );
 	sr_webcam_set_format ( device, w, h, fps );
 	sr_webcam_set_callback ( device, &Webcam::callback );
 	sr_webcam_set_user ( device, this );

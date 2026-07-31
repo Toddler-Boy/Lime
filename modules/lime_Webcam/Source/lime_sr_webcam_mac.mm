@@ -281,6 +281,25 @@
 
 @end
 
+std::vector<std::string> sr_webcam_list_devices() {
+	// Must walk the same enumeration setupWithID opens by index
+	NSArray* devices;
+	if(@available(macOS 10.15, *)) {
+		NSArray* deviceTypes						   = @[AVCaptureDeviceTypeBuiltInWideAngleCamera, AVCaptureDeviceTypeExternal];
+		AVCaptureDeviceDiscoverySession* discovSession = [AVCaptureDeviceDiscoverySession discoverySessionWithDeviceTypes:deviceTypes mediaType:AVMediaTypeVideo position:AVCaptureDevicePositionUnspecified];
+		devices										   = [discovSession devices];
+	} else {
+		devices = [AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo];
+	}
+
+	std::vector<std::string> names;
+	for(AVCaptureDevice* dev in devices) {
+		const char* name = [[dev localizedName] UTF8String];
+		names.push_back(name ? name : "Camera " + std::to_string(names.size() + 1));
+	}
+	return names;
+}
+
 bool sr_webcam_open(sr_webcam_device* device) {
 	// Already setup.
 	if(device->stream) {
