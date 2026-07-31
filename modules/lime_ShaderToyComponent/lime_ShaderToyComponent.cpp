@@ -9,6 +9,7 @@
 
 #include "lime_ShaderToyComponent.h"
 
+#include "Source/lime_ContentSource.cpp"
 #include "Source/lime_openGL_Image.cpp"
 #include "Source/lime_openGL_Quad.cpp"
 #include "Source/lime_openGL_Texture.cpp"

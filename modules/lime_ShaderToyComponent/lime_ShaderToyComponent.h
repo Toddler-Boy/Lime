@@ -37,6 +37,7 @@
 //==============================================================================
 
 #include "Source/lime_openGL_Image.h"
+#include "Source/lime_ContentSource.h"
 #include "Source/lime_openGL_Quad.h"
 #include "Source/lime_openGL_Texture.h"
 #include "Source/lime_shaderTarget.h"

@@ -95,7 +95,7 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	//
 	crtMaskTexture = addTexture ( "CRT Masks/Slot Mask.png", [] ( lime::shaderTexture* dst, const juce::File& root )
 	{
-		if ( auto mask = juce::SoftwareImageType ().convert ( juce::ImageFileFormat::loadFrom ( root ) ); mask.isValid () )
+		if ( auto mask = juce::SoftwareImageType ().convert ( lime::content::loadImage ( root ) ); mask.isValid () )
 			dst->fromImage ( mask );
 	} );
 
@@ -140,7 +140,7 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	//
 	glassTexture = addTexture ( "../reflections.png", [] ( lime::shaderTexture* dst, const juce::File& root )
 	{
-		if ( auto rfl = juce::SoftwareImageType ().convert ( juce::ImageFileFormat::loadFrom ( root ) ); rfl.isValid () )
+		if ( auto rfl = juce::SoftwareImageType ().convert ( lime::content::loadImage ( root ) ); rfl.isValid () )
 			dst->fromImage ( rfl );
 	} );
 
@@ -177,7 +177,7 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	//
 	overlayTexture = addTexture ( "/overlay", [ this ] ( lime::shaderTexture* dst, const juce::File& root )
 	{
-		auto	ovlImg = juce::SoftwareImageType ().convert ( juce::ImageFileFormat::loadFrom ( root ) );
+		auto	ovlImg = juce::SoftwareImageType ().convert ( lime::content::loadImage ( root ) );
 
 		if ( ! ovlImg.isValid () )
 		{
@@ -218,7 +218,7 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	{
 		auto loadOverlayLUT = [] ( lime::shaderTexture* dst, const juce::File& root )
 		{
-			dst->from3DLUT ( juce::SoftwareImageType ().convert ( juce::ImageFileFormat::loadFrom ( root ) ) );
+			dst->from3DLUT ( juce::SoftwareImageType ().convert ( lime::content::loadImage ( root ) ) );
 		};
 		overlayLUT_dusk = addTexture ( "../dusk.png", loadOverlayLUT );
 		overlayLUT_night = addTexture ( "../night.png", loadOverlayLUT );
@@ -617,11 +617,11 @@ void CRTEmulation::setRoot ( const juce::File& _root )
 
 		rootOverlays = root.getChildFile ( "Overlays/" );
 
-		const auto	files = rootOverlays.findChildFiles ( juce::File::TypesOfFileToFind::findDirectories, false, "*" );
+		const auto	files = content::listFolders ( rootOverlays );
 
 		// Only add folders that contain a profile.yml file
 		for ( const auto& f : files )
-			if ( f.getChildFile ( "profile.yml" ).existsAsFile () )
+			if ( content::exists ( f.getChildFile ( "profile.yml" ) ) )
 				overlayProfiles.add ( f.getFileName () );
 
 		overlayProfiles.sortNatural ();
@@ -635,7 +635,7 @@ void CRTEmulation::setRoot ( const juce::File& _root )
 
 		rootCRTMasks = root.getChildFile ( "CRT Masks/" );
 
-		const auto	files = rootCRTMasks.findChildFiles ( juce::File::TypesOfFileToFind::findFiles, false, "*.png" );
+		const auto	files = content::listFiles ( rootCRTMasks, false, "*.png" );
 
 		for ( const auto& f : files )
 			crtMasks.add ( f.getFileNameWithoutExtension () );
@@ -689,7 +689,7 @@ bool CRTEmulation::parseOverlayProfile ( const juce::String& profileName )
 
 	// Check if profile exists
 	auto	file = rootOverlays.getChildFile ( profileName ).getChildFile ( "profile.yml" );
-	if ( ! file.existsAsFile () )
+	if ( ! content::exists ( file ) )
 		return false;
 
 	static const	std::vector<std::pair<std::string, YamlConfig::ConfigValue>>	overlayDefaults
@@ -715,7 +715,8 @@ bool CRTEmulation::parseOverlayProfile ( const juce::String& profileName )
 	};
 
 	auto	yml = YamlConfig ( overlayDefaults );
-	yml.load ( file );
+	if ( const auto yamlText = content::loadText ( file ); yamlText.isNotEmpty () )
+		yml.fromYamlString ( yamlText );
 
 	mulDaytime = yml.get<float> ( "multipliers/daytime" );
 	mulBezel = yml.get<float> ( "multipliers/bezel" );
@@ -1104,7 +1105,7 @@ juce::Rectangle<int> CRTEmulation::loadPartialTexture ( lime::shaderTexture* dst
 	if ( ! overlayTexture->isValid () )
 		return {};
 
-	if ( auto rfl = juce::SoftwareImageType ().convert ( juce::ImageFileFormat::loadFrom ( root ) ); rfl.isARGB () )
+	if ( auto rfl = juce::SoftwareImageType ().convert ( lime::content::loadImage ( root ) ); rfl.isARGB () )
 	{
 		auto	edgeRect = getCropBounds ( rfl ).expanded ( expansion, expansion );
 

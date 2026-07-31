@@ -318,9 +318,13 @@ void ShaderToyComponent::setRoot ( const juce::File& _root, const juce::File& _l
 	if ( root == juce::File () && localRoot == juce::File () )
 		return;
 
-	fsWatcher.addFolder ( root );
-	if ( localRoot != juce::File () && ! localRoot.isAChildOf ( root ) && root != localRoot )
-		fsWatcher.addFolder ( localRoot );
+	// With a content loader there are no real files to watch
+	if ( ! content::hasLoader () )
+	{
+		fsWatcher.addFolder ( root );
+		if ( localRoot != juce::File () && ! localRoot.isAChildOf ( root ) && root != localRoot )
+			fsWatcher.addFolder ( localRoot );
+	}
 
 	// (Re)load all shaders
 	for ( auto& dst : targets )
@@ -329,7 +333,7 @@ void ShaderToyComponent::setRoot ( const juce::File& _root, const juce::File& _l
 	// (Re)load all textures
 	for ( auto& dst : textures )
 		if ( ! dst->name.startsWithChar ( '/' ) && dst->load )
-			if ( auto file = findFile ( dst->name ); file.existsAsFile () )
+			if ( auto file = findFile ( dst->name ); content::exists ( file ) )
 				dst->load ( dst.get (), file);
 }
 //-----------------------------------------------------------------------------
@@ -352,7 +356,7 @@ void ShaderToyComponent::parsePipeline ()
 {
 	resetPipeline ();
 
-	auto	jsonStr = renderPipeline.loadFileAsString ().toStdString ();
+	auto	jsonStr = content::loadText ( renderPipeline ).toStdString ();
 
 	// Remove all C++ style comments from string
 	jsonStr = std::regex_replace ( jsonStr, std::regex ( R"rx(\/\/.*|\/\*[\s\S]*?\*\/|("(\\.|[^"])*"))rx" ), "$1" );
@@ -431,7 +435,7 @@ void ShaderToyComponent::parsePipeline ()
 								if ( txt == nullptr )
 								{
 									txt = addTexture ( texName, [] ( shaderTexture* dst, const juce::File& f ) {
-										if ( auto sit = juce::SoftwareImageType ().convert ( juce::ImageFileFormat::loadFrom ( f ) ); sit.isValid () )
+										if ( auto sit = juce::SoftwareImageType ().convert ( content::loadImage ( f ) ); sit.isValid () )
 											dst->fromImage ( sit );
 									} );
 								}
@@ -677,7 +681,7 @@ void ShaderToyComponent::setTextureSource ( shaderTexture* dst, const juce::Stri
 	dst->name = name;
 
 	if ( ! name.startsWithChar ( '/' ) && dst->load )
-		if ( auto file = findFile ( name ); file.existsAsFile () )
+		if ( auto file = findFile ( name ); content::exists ( file ) )
 			dst->load ( dst, file );
 }
 //-----------------------------------------------------------------------------
@@ -770,19 +774,19 @@ juce::File ShaderToyComponent::findFile ( const juce::String& name )
 	auto	file = juce::File ();
 
 	if ( localRoot != juce::File () )
-		if ( file = localRoot.getChildFile ( name ); file.existsAsFile () )
+		if ( file = localRoot.getChildFile ( name ); content::exists ( file ) )
 			return file;
 
 	if ( root != juce::File () )
 	{
 		if ( name.endsWithIgnoreCase ( ".glsl" ) )
 		{
-			if ( file = root.getChildFile ( shaderFolderName + "/" + name ); file.existsAsFile () )
+			if ( file = root.getChildFile ( shaderFolderName + "/" + name ); content::exists ( file ) )
 				return file;
 		}
 		else
 		{
-			if ( file = root.getChildFile ( textureFolderName + "/" + name ); file.existsAsFile () )
+			if ( file = root.getChildFile ( textureFolderName + "/" + name ); content::exists ( file ) )
 				return file;
 		}
 	}
@@ -853,7 +857,7 @@ void ShaderToyComponent::processRecursive ( std::string& source, std::set<std::s
 		dependencies.insert ( fileName );
 
 		// Load content and recursively process it before injection
-		auto	includeContent = findFile ( fileName ).loadFileAsString ().toStdString ();
+		auto	includeContent = content::loadText ( findFile ( fileName ) ).toStdString ();
 		processRecursive ( includeContent, dependencies );
 
 		// Replace the #include line with the processed content
@@ -870,7 +874,7 @@ juce::String ShaderToyComponent::loadShader ( juce::String name )
 	if ( name.startsWithChar ( '/' ) )
 		name = name.substring ( 1 );
 
-	auto	shaderStr = findFile ( name ).loadFileAsString ();
+	auto	shaderStr = content::loadText ( findFile ( name ) );
 	if ( shaderStr.isEmpty () )
 	{
 		juce::Logger::writeToLog ( "[E]Can't find shader named " + name.quoted () );
@@ -890,7 +894,7 @@ juce::String ShaderToyComponent::loadShader ( juce::String name )
 	// Check for common-file
 	if ( ! shaderStr.containsIgnoreCase ( "#version" ) && dependencies.empty () )
 	{
-		if ( auto commonStr = findFile ( "common.glsl" ).loadFileAsString (); commonStr.isNotEmpty () )
+		if ( auto commonStr = content::loadText ( findFile ( "common.glsl" ) ); commonStr.isNotEmpty () )
 		{
 			shaderDependencies[ name.toStdString () ] = { "common.glsl" };
 			return commonStr + "\n" + shaderStr;
