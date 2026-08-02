@@ -88,6 +88,7 @@ public:
 		int8_t			webcamBrightness = 50;
 		int8_t			webcamContrast = 50;
 		int8_t			webcamSaturation = 50;
+		int8_t			webcamZoom = 0;
 
 		[[ nodiscard ]] bool needsNewEncoders ( const settings& other ) const
 		{

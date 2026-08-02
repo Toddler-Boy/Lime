@@ -951,6 +951,9 @@ void CRTEmulation::setSettings ( const settings& set )
 			// Aspect ratio correction for webcam image
 			crtTargetCurved->setUniform_f ( "crtRflCorrection", ( 4.0f / 3.0f ) / ( float ( camImageNV12_Y.width ) / float ( camImageNV12_Y.height ) ) );
 
+			// Zoom compensates a distant subject or a wide-angle camera
+			crtTargetCurved->setUniform_f ( "camZoom", std::lerp ( 1.0f, 2.0f, set.webcamZoom * 0.01f ) );
+
 			// Pixel-format sampling switch (always NV12; consumer fails closed on anything else)
 			crtTargetCurved->setUniform_i ( "crtWebcamFormat", 0 );
 
