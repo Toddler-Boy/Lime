@@ -62,6 +62,7 @@ public:
 
 		// CRT
 		int8_t			crtCurve = 20;
+		int8_t			crtRotation = 0;	// -100..100 = -0.5..+0.5 degrees
 		int8_t			crtBleed = 20;
 		std::pair<int8_t, int8_t> crtBleedRed = { 50, -10 };
 		std::pair<int8_t, int8_t> crtBleedGreen = { 50, -10 };

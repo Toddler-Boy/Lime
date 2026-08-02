@@ -360,7 +360,28 @@ void CRTEmulation::updateZoom ()
 {
 	const auto	rects = calcRects ();
 
-	crtTargetCurved->setBounds ( rects[ 0 ] );
+	// The tube quad rotates around its center (vertex order as setBounds:
+	// top-left, top-right, bottom-left, bottom-right)
+	{
+		const auto&	r = rects[ 0 ];
+		const auto	angle = juce::degreesToRadians ( curSettings.crtRotation * 0.005f );
+		const auto	sinA = std::sin ( angle );
+		const auto	cosA = std::cos ( angle );
+		const auto	center = r.getCentre ();
+
+		auto corner = [ & ] ( const float x, const float y ) -> std::array<float, 4>
+		{
+			const auto	dx = x - center.x;
+			const auto	dy = y - center.y;
+
+			return { center.x + dx * cosA - dy * sinA, center.y + dx * sinA + dy * cosA, 1.0f, 1.0f };
+		};
+
+		crtTargetCurved->setVertices ( {	corner ( r.getX (), r.getY () ),
+											corner ( r.getRight (), r.getY () ),
+											corner ( r.getX (), r.getBottom () ),
+											corner ( r.getRight (), r.getBottom () ) } );
+	}
 
 	if ( rects.size () > 1 )
 	{
@@ -838,7 +859,12 @@ void CRTEmulation::setSettings ( const settings& set )
 		crtBloomCalcTarget->setEnabled ( set.crtEmulation );
 	}
 
+	const auto	rotationChanged = set.crtRotation != curSettings.crtRotation;
+
 	curSettings = set;
+
+	if ( rotationChanged )
+		updateZoom ();
 
 //	halationTarget->setEnabled ( isHalationEnabled () );
 
