@@ -212,6 +212,10 @@ private:
 	shaderTarget*	overlayDustTarget;
 	shaderTexture*	overlayDustTexture;
 
+	// Tube rotation, shared by the quad vertices and the shader's
+	// counter-rotated reflection sampling
+	[[ nodiscard ]] float rotationRadians () const	{	return juce::degreesToRadians ( curSettings.crtRotation * 0.005f );	}
+
 	//
 	// Webcam stuff
 	//

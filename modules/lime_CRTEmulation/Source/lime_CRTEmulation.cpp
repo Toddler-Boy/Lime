@@ -364,7 +364,7 @@ void CRTEmulation::updateZoom ()
 	// top-left, top-right, bottom-left, bottom-right)
 	{
 		const auto&	r = rects[ 0 ];
-		const auto	angle = juce::degreesToRadians ( curSettings.crtRotation * 0.005f );
+		const auto	angle = rotationRadians ();
 		const auto	sinA = std::sin ( angle );
 		const auto	cosA = std::cos ( angle );
 		const auto	center = r.getCentre ();
@@ -381,6 +381,9 @@ void CRTEmulation::updateZoom ()
 											corner ( r.getRight (), r.getY () ),
 											corner ( r.getX (), r.getBottom () ),
 											corner ( r.getRight (), r.getBottom () ) } );
+
+		// The shader's counter-rotation needs the quad's own metric
+		crtTargetCurved->setUniform_f ( "crtAspect", r.getHeight () > 0.0f ? r.getWidth () / r.getHeight () : 1.0f );
 	}
 
 	if ( rects.size () > 1 )
@@ -965,6 +968,9 @@ void CRTEmulation::setSettings ( const settings& set )
 
 		// Curve
 		crtTargetCurved->setUniform_f ( "crtCurve", set.crtCurve * 0.01f );
+
+		// Rotation (reflection sampling counter-rotates, the room stays level)
+		crtTargetCurved->setUniform_f ( "crtRotation", rotationRadians () );
 
 		// Webcam stuff
 		{
