@@ -72,7 +72,6 @@ public:
 		int8_t			crtHwave = 50;
 		int8_t			crtBloomExpansion = 100;
 		int8_t			crtScanlines = 25;
-		int8_t			crtScanlineShape = 0;
 		int8_t			crtMask = 25;
 		juce::String	crtMaskBitmap = "Shadow Mask EDP";
 		int8_t			crtPhosphorDecay = 60;

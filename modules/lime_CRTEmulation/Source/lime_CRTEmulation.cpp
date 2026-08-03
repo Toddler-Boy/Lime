@@ -971,7 +971,6 @@ void CRTEmulation::setSettings ( const settings& set )
 
 		// Scanlines
 		crtTarget->setUniform_f ( "crtScanlines", set.crtScanlines * 0.01f );
-		crtTarget->setUniform_f ( "crtScanlineShape", set.crtScanlineShape * 0.01f );
 
 		// Bloom expansion
 		crtTarget->setUniform_f ( "crtBloomExpansion", set.crtBloomExpansion * 0.01f );
