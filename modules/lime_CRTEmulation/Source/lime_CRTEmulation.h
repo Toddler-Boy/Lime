@@ -56,6 +56,7 @@ public:
 		int8_t			decLumaBlur = 50;
 		int8_t			decChromaBlur = 50;
 		int8_t			decCrosstalk = 20;
+		float			decPALPhase = 22.5f;	// Alternation angle in degrees
 		int8_t			decHannover = 90;
 		int8_t			decRainbowing = 50;
 		int8_t			decPhaseError = 20;
@@ -71,6 +72,7 @@ public:
 		int8_t			crtHwave = 50;
 		int8_t			crtBloomExpansion = 100;
 		int8_t			crtScanlines = 25;
+		int8_t			crtScanlineShape = 0;
 		int8_t			crtMask = 25;
 		juce::String	crtMaskBitmap = "Shadow Mask EDP";
 		int8_t			crtPhosphorDecay = 60;
@@ -155,6 +157,7 @@ private:
 	settings		curSettings;
 	float			currentZoom = 0.0f;
 	float			currentOverscan = 0.0f;
+	float			tubeHeight = 0.0f;	// Logical, the render scale is applied per frame
 
 	// Webcam raw-data NV12 (Windows & macOS)
 	openGL_Image	camImageNV12_Y { 1, 1920, 1080 };

@@ -384,6 +384,8 @@ void CRTEmulation::updateZoom ()
 
 		// The shader's counter-rotation needs the quad's own metric
 		crtTargetCurved->setUniform_f ( "crtAspect", r.getHeight () > 0.0f ? r.getWidth () / r.getHeight () : 1.0f );
+
+		tubeHeight = r.getHeight ();
 	}
 
 	if ( rects.size () > 1 )
@@ -410,6 +412,10 @@ void CRTEmulation::renderFrame ()
 	// Get deltaTime
 	const auto	deltaTime = getDeltaTime ();
 
+	// Physical pixels per source line; the rendering scale is read per frame
+	// so a DPI change tracks without a resize
+	crtTarget->setUniform_f ( "crtLinePixels", tubeHeight * float ( openGLContext.getRenderingScale () ) / float ( res.nativeHeight ) );
+
 	// Calculate decay-factors and flicker-strength for phosphor-decay emulation
 	{
 		const auto	crtDecay = curSettings.crtPhosphorDecay * 0.01f;
@@ -417,9 +423,14 @@ void CRTEmulation::renderFrame ()
 
 		constexpr float	decayFactors[ 3 ] = { 18.0f, 17.0f, 20.0f };
 
-		const auto	factorR = float ( std::exp2 ( -( decayFactors[ 0 ] * decay ) * deltaTime ) );
-		const auto	factorG = float ( std::exp2 ( -( decayFactors[ 1 ] * decay ) * deltaTime ) );
-		const auto	factorB = float ( std::exp2 ( -( decayFactors[ 2 ] * decay ) * deltaTime ) );
+		// The exponential tail never truly dies, high refresh rates make that
+		// visible; fade it to a hard off before the flicker zone
+		const auto	t = std::clamp ( ( crtDecay - 0.6f ) * 10.0f, 0.0f, 1.0f );
+		const auto	off = 1.0f - t * t * ( 3.0f - 2.0f * t );
+
+		const auto	factorR = float ( std::exp2 ( -( decayFactors[ 0 ] * decay ) * deltaTime ) ) * off;
+		const auto	factorG = float ( std::exp2 ( -( decayFactors[ 1 ] * decay ) * deltaTime ) ) * off;
+		const auto	factorB = float ( std::exp2 ( -( decayFactors[ 2 ] * decay ) * deltaTime ) ) * off;
 
 		crtTarget->setUniform_f ( "u_decayFactor", { factorR, factorG, factorB } );
 
@@ -919,6 +930,7 @@ void CRTEmulation::setSettings ( const settings& set )
 		lumaChromaTarget->setUniform_f ( "decChromablur", set.decChromaBlur * 0.01f );
 
 		lumaChromaTarget->setUniform_f ( "decCrosstalk", set.decCrosstalk * 0.01f );
+		lumaChromaTarget->setUniform_f ( "decPhase", set.decPALPhase );
 		lumaChromaTarget->setUniform_f ( "decPALDelayLine", set.decHannover * 0.01f );
 		lumaChromaTarget->setUniform_f ( "decCrossColor", set.decRainbowing * 0.01f );
 		lumaChromaTarget->setUniform_f ( "decDrift", set.decPhaseError * 0.01f );
@@ -944,6 +956,7 @@ void CRTEmulation::setSettings ( const settings& set )
 
 		// Scanlines
 		crtTarget->setUniform_f ( "crtScanlines", set.crtScanlines * 0.01f );
+		crtTarget->setUniform_f ( "crtScanlineShape", set.crtScanlineShape * 0.01f );
 
 		// Bloom expansion
 		crtTarget->setUniform_f ( "crtBloomExpansion", set.crtBloomExpansion * 0.01f );
