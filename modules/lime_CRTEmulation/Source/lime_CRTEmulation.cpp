@@ -522,6 +522,23 @@ void CRTEmulation::renderFrame ()
 
 		crtTarget->setUniform_f ( "crtOverscan", { currentOverscan, yOver } );
 	}
+
+	// Update noise: a lost signal snaps to snow, a found one tunes back down
+	{
+		constexpr auto	snowNoise = 0.8f;
+		constexpr auto	tuneInSpeed = 0.982f;	// ~750ms settle
+
+		const auto	target = curSettings.decNoise * 0.01f;
+
+		if ( signalLost )
+			currentNoise = snowNoise;
+		else if ( currentNoise < 0.0f )
+			currentNoise = target;
+		else
+			currentNoise = fiLerp ( currentNoise, target, tuneInSpeed, deltaTime );
+
+		lumaChromaTarget->setUniform_f ( "decNoise", currentNoise );
+	}
 }
 //-----------------------------------------------------------------------------
 
@@ -923,8 +940,6 @@ void CRTEmulation::setSettings ( const settings& set )
 	// CRT emulation uniforms
 	//
 	{
-		lumaChromaTarget->setUniform_f ( "decNoise", set.decNoise * 0.01f );
-
 		lumaChromaTarget->setUniform_f ( "decSharpening", set.decSharpening * 0.01f );
 		lumaChromaTarget->setUniform_f ( "decLumablur", set.decLumaBlur * 0.01f );
 		lumaChromaTarget->setUniform_f ( "decChromablur", set.decChromaBlur * 0.01f );

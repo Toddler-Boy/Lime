@@ -125,6 +125,10 @@ public:
 	void setSettings ( const settings& set );
 	[[ nodiscard ]] settings& getSettings () { return curSettings; }
 
+	// With the signal lost, the decoder noise snaps to full snow; once it is
+	// back, the noise tunes down to the configured level
+	void setSignalLost ( const bool lost )	{	signalLost = lost;	}
+
 	void setBackgroundColor ( const juce::Colour bckCol );
 
 	void setIndexTextureSource ( const juce::Image& img );
@@ -158,6 +162,9 @@ private:
 	float			currentZoom = 0.0f;
 	float			currentOverscan = 0.0f;
 	float			tubeHeight = 0.0f;	// Logical, the render scale is applied per frame
+
+	std::atomic<bool>	signalLost = false;
+	float				currentNoise = -1.0f;	// Negative until the first frame snaps it
 
 	// Webcam raw-data NV12 (Windows & macOS)
 	openGL_Image	camImageNV12_Y { 1, 1920, 1080 };
