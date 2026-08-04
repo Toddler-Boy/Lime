@@ -59,7 +59,11 @@
 	// List available devices
 	NSArray* devices;
 	if(@available(macOS 10.15, *)) {
-		NSArray* deviceTypes						   = @[AVCaptureDeviceTypeBuiltInWideAngleCamera, AVCaptureDeviceTypeExternal];
+		// AVCaptureDeviceTypeExternal arrived in 14.0; before that the external class was "unknown"
+		AVCaptureDeviceType external;
+		if(@available(macOS 14.0, *))	external = AVCaptureDeviceTypeExternal;
+		else							external = AVCaptureDeviceTypeExternalUnknown;
+		NSArray* deviceTypes						   = @[AVCaptureDeviceTypeBuiltInWideAngleCamera, external];
 		AVCaptureDeviceDiscoverySession* discovSession = [AVCaptureDeviceDiscoverySession discoverySessionWithDeviceTypes:deviceTypes mediaType:AVMediaTypeVideo position:AVCaptureDevicePositionUnspecified];
 		devices										   = [discovSession devices];
 	} else {
@@ -285,7 +289,11 @@ std::vector<std::string> sr_webcam_list_devices() {
 	// Must walk the same enumeration setupWithID opens by index
 	NSArray* devices;
 	if(@available(macOS 10.15, *)) {
-		NSArray* deviceTypes						   = @[AVCaptureDeviceTypeBuiltInWideAngleCamera, AVCaptureDeviceTypeExternal];
+		// AVCaptureDeviceTypeExternal arrived in 14.0; before that the external class was "unknown"
+		AVCaptureDeviceType external;
+		if(@available(macOS 14.0, *))	external = AVCaptureDeviceTypeExternal;
+		else							external = AVCaptureDeviceTypeExternalUnknown;
+		NSArray* deviceTypes						   = @[AVCaptureDeviceTypeBuiltInWideAngleCamera, external];
 		AVCaptureDeviceDiscoverySession* discovSession = [AVCaptureDeviceDiscoverySession discoverySessionWithDeviceTypes:deviceTypes mediaType:AVMediaTypeVideo position:AVCaptureDevicePositionUnspecified];
 		devices										   = [discovSession devices];
 	} else {
