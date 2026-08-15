@@ -44,16 +44,11 @@ juce::String loadText ( const juce::File& file )
 }
 //-----------------------------------------------------------------------------
 
-juce::Image loadImage ( const juce::File& file )
+openGL_Image loadTexture ( const juce::File& file )
 {
-	if ( ! activeLoader.load )
-		return juce::ImageFileFormat::loadFrom ( file );
+	const auto	mb = loadData ( file );
 
-	const auto	mb = activeLoader.load ( file );
-	if ( mb.getSize () == 0 )
-		return {};
-
-	return juce::ImageFileFormat::loadFrom ( mb.getData (), mb.getSize () );
+	return decodeTexture ( mb.getData (), mb.getSize () );
 }
 //-----------------------------------------------------------------------------
 

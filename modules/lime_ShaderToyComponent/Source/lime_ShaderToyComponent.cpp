@@ -435,8 +435,8 @@ void ShaderToyComponent::parsePipeline ()
 								if ( txt == nullptr )
 								{
 									txt = addTexture ( texName, [] ( shaderTexture* dst, const juce::File& f ) {
-										if ( auto sit = juce::SoftwareImageType ().convert ( content::loadImage ( f ) ); sit.isValid () )
-											dst->fromImage ( sit );
+										if ( auto img = content::loadTexture ( f ); img.isValid () )
+											dst->fromImage ( std::move ( img ) );
 									} );
 								}
 

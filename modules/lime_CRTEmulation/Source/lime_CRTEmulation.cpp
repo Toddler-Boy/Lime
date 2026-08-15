@@ -95,8 +95,8 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	//
 	crtMaskTexture = addTexture ( "CRT Masks/Slot Mask.png", [] ( lime::shaderTexture* dst, const juce::File& root )
 	{
-		if ( auto mask = juce::SoftwareImageType ().convert ( lime::content::loadImage ( root ) ); mask.isValid () )
-			dst->fromImage ( mask );
+		if ( auto mask = lime::content::loadTexture ( root ); mask.isValid () )
+			dst->fromImage ( std::move ( mask ) );
 	} );
 
 	crtTarget = addTarget ( "crt-simulation.glsl" );
@@ -140,8 +140,8 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	//
 	glassTexture = addTexture ( "../reflections.png", [] ( lime::shaderTexture* dst, const juce::File& root )
 	{
-		if ( auto rfl = juce::SoftwareImageType ().convert ( lime::content::loadImage ( root ) ); rfl.isValid () )
-			dst->fromImage ( rfl );
+		if ( auto rfl = lime::content::loadTexture ( root ); rfl.isValid () )
+			dst->fromImage ( std::move ( rfl ) );
 	} );
 
 	//
@@ -177,7 +177,7 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	//
 	overlayTexture = addTexture ( "/overlay", [ this ] ( lime::shaderTexture* dst, const juce::File& root )
 	{
-		auto	ovlImg = juce::SoftwareImageType ().convert ( lime::content::loadImage ( root ) );
+		auto	ovlImg = lime::content::loadTexture ( root );
 
 		if ( ! ovlImg.isValid () )
 		{
@@ -186,15 +186,7 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 			return;
 		}
 
-		if ( ! ovlImg.isARGB () )
-		{
-			Z_ERR ( "Overlay image has no alpha channel: " << root.getFullPathName () );
-			dst->unload ();
-			return;
-		}
-
-		dst->fromImage ( ovlImg );
-		overlayImgRect = ovlImg.getBounds ().toFloat ();
+		overlayImgRect = juce::Rectangle<float> ( float ( ovlImg.width ), float ( ovlImg.height ) );
 
 		// Find hole in overlay (where the screen is)
 		const auto	pixelHole = getHoleBounds ( ovlImg );
@@ -204,6 +196,8 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 			dst->unload ();
 			return;
 		}
+
+		dst->fromImage ( std::move ( ovlImg ) );
 
 		const auto	hole = expandHoleBounds ( pixelHole, res.scaledWidth * 0.937f / float ( res.scaledHeight ), 1.0f );
 
@@ -218,7 +212,7 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 	{
 		auto loadOverlayLUT = [] ( lime::shaderTexture* dst, const juce::File& root )
 		{
-			dst->from3DLUT ( juce::SoftwareImageType ().convert ( lime::content::loadImage ( root ) ) );
+			dst->from3DLUT ( lime::content::loadTexture ( root ) );
 		};
 		overlayLUT_dusk = addTexture ( "../dusk.png", loadOverlayLUT );
 		overlayLUT_night = addTexture ( "../night.png", loadOverlayLUT );
@@ -244,22 +238,24 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 
 			if ( dst->isValid () )
 			{
-				auto	bzl = std::get<juce::Image> ( dst->source );
+				auto		bzl = std::get<openGL_Image> ( dst->source );
+				const auto	ovl = std::get<openGL_Image> ( overlayTexture->source );
 
-				// Blend overlay texture into bezel-mask
+				// Blend overlay texture into bezel-mask: the bezel alpha scales the
+				// overlay pixel, which in premultiplied form is a plain multiply
+				for ( auto bzlY = 0; bzlY < edgeRect.getHeight (); ++bzlY )
 				{
-					auto	ovl = juce::Image::BitmapData ( std::get<juce::Image> ( overlayTexture->source ), juce::Image::BitmapData::readOnly );
-					auto	bzlDst = juce::Image::BitmapData ( bzl, juce::Image::BitmapData::readWrite );
+					auto		bzlPix = bzl.getLinePointer ( bzlY );
+					const auto*	ovlPix = ovl.getLinePointer ( edgeRect.getY () + bzlY ) + edgeRect.getX () * 4;
 
-					for ( auto bzlY = 0; bzlY < edgeRect.getHeight (); ++bzlY )
+					for ( auto bzlX = 0; bzlX < edgeRect.getWidth (); ++bzlX, bzlPix += 4, ovlPix += 4 )
 					{
-						for ( auto bzlX = 0; bzlX < edgeRect.getWidth (); ++bzlX )
+						if ( const auto mask = bzlPix[ 3 ] )
 						{
-							if ( auto pix = bzlDst.getPixelColour ( bzlX, bzlY ); pix.getAlpha () )
-							{
-								auto	ovlCol = ovl.getPixelColour ( edgeRect.getX () + bzlX, edgeRect.getY () + bzlY );
-								bzlDst.setPixelColour ( bzlX, bzlY, ovlCol.withAlpha ( ovlCol.getFloatAlpha () * pix.getFloatAlpha () ) );
-							}
+							bzlPix[ 0 ] = uint8_t ( ( ovlPix[ 0 ] * mask + 127 ) / 255 );
+							bzlPix[ 1 ] = uint8_t ( ( ovlPix[ 1 ] * mask + 127 ) / 255 );
+							bzlPix[ 2 ] = uint8_t ( ( ovlPix[ 2 ] * mask + 127 ) / 255 );
+							bzlPix[ 3 ] = uint8_t ( ( ovlPix[ 3 ] * mask + 127 ) / 255 );
 						}
 					}
 				}
@@ -1187,14 +1183,22 @@ juce::Rectangle<int> CRTEmulation::loadPartialTexture ( lime::shaderTexture* dst
 	if ( ! overlayTexture->isValid () )
 		return {};
 
-	if ( auto rfl = juce::SoftwareImageType ().convert ( lime::content::loadImage ( root ) ); rfl.isARGB () )
+	if ( const auto rfl = lime::content::loadTexture ( root ); rfl.isValid () )
 	{
 		auto	edgeRect = getCropBounds ( rfl ).expanded ( expansion, expansion );
 
 		// Keep the edge rectangle within the bounds of the image
-		rfl.getBounds ().intersectRectangle ( edgeRect );
+		juce::Rectangle<int> ( 0, 0, rfl.width, rfl.height ).intersectRectangle ( edgeRect );
 
-		dst->fromImage ( rfl.getClippedImage ( edgeRect ) );
+		// Copy out the cropped region
+		openGL_Image	cropped ( rfl.pixLen, edgeRect.getWidth (), edgeRect.getHeight () );
+
+		for ( auto y = 0; y < edgeRect.getHeight (); ++y )
+			std::copy_n ( rfl.getLinePointer ( edgeRect.getY () + y ) + edgeRect.getX () * rfl.pixLen,
+						  edgeRect.getWidth () * rfl.pixLen,
+						  cropped.getLinePointer ( y ) );
+
+		dst->fromImage ( std::move ( cropped ) );
 
 		return edgeRect;
 	}
@@ -1203,72 +1207,76 @@ juce::Rectangle<int> CRTEmulation::loadPartialTexture ( lime::shaderTexture* dst
 }
 //-----------------------------------------------------------------------------
 
-juce::Rectangle<int> CRTEmulation::getCropBounds ( juce::Image& img )
+juce::Rectangle<int> CRTEmulation::getCropBounds ( const openGL_Image& img )
 {
 	// Find smallest rectangle still containing all pixels from image
-	const auto	bmp = juce::Image::BitmapData ( img, juce::Image::BitmapData::readOnly );
-	const auto	pixCnt = bmp.width * bmp.height;
+	const auto*	data = img.getData ();
+	const auto	pixLen = img.pixLen;
+	const auto	lineLen = img.width * pixLen;
+	const auto	pixCnt = img.width * img.height;
 
 	// Top
 	auto	y = 0;
-	for ( ; y < pixCnt && ! bmp.data[ y * bmp.pixelStride + 3 ]; ++y );
-	y /= bmp.width;
+	for ( ; y < pixCnt && ! data[ y * pixLen + 3 ]; ++y );
+	y /= img.width;
 
 	// Bottom
 	auto	h = pixCnt - 1;
-	for ( ; h >= y && ! bmp.data[ h * bmp.pixelStride + 3 ]; --h );
-	h /= bmp.width;
+	for ( ; h >= y && ! data[ h * pixLen + 3 ]; --h );
+	h /= img.width;
 
-	auto isColumnUsed = [ &bmp ] ( const int col ) -> bool
+	auto isColumnUsed = [ & ] ( const int col ) -> bool
 	{
-		auto	data = bmp.data + col * bmp.pixelStride + 3;
-		int		testY = 0;
-		for ( ; testY < bmp.height && ! data[ testY * bmp.lineStride ]; ++testY );
-		return testY < bmp.height;
+		auto	colData = data + col * pixLen + 3;
+		auto	testY = 0;
+		for ( ; testY < img.height && ! colData[ testY * lineLen ]; ++testY );
+		return testY < img.height;
 	};
 
 	// Left
 	auto	x = 0;
-	for ( ; x < bmp.width && ! isColumnUsed ( x ); ++x );
+	for ( ; x < img.width && ! isColumnUsed ( x ); ++x );
 
 	// Right
-	auto	w = bmp.width - 1;
+	auto	w = img.width - 1;
 	for ( ; w >= x && ! isColumnUsed ( w ); --w );
 
 	return { x, y, ( w + 1 ) - x, ( h + 1 ) - y };
 }
 //-----------------------------------------------------------------------------
 
-juce::Rectangle<int> CRTEmulation::getHoleBounds ( juce::Image& img )
+juce::Rectangle<int> CRTEmulation::getHoleBounds ( const openGL_Image& img )
 {
 	// Find smallest rectangle that covers all non-opaque pixels
-	const auto	bmp = juce::Image::BitmapData ( img, juce::Image::BitmapData::readOnly );
-	const auto	pixCnt = bmp.width * bmp.height;
+	const auto*	data = img.getData ();
+	const auto	pixLen = img.pixLen;
+	const auto	lineLen = img.width * pixLen;
+	const auto	pixCnt = img.width * img.height;
 
 	// Top
 	auto	y = 0;
-	for ( ; y < pixCnt && bmp.data[ y * bmp.pixelStride + 3 ] == 255; ++y );
-	y /= bmp.width;
+	for ( ; y < pixCnt && data[ y * pixLen + 3 ] == 255; ++y );
+	y /= img.width;
 
 	// Bottom
 	auto	h = pixCnt - 1;
-	for ( ; h >= y && bmp.data[ h * bmp.pixelStride + 3 ] == 255; --h );
-	h /= bmp.width;
+	for ( ; h >= y && data[ h * pixLen + 3 ] == 255; --h );
+	h /= img.width;
 
-	auto isColumnOpaque = [ &bmp ] ( const int col ) -> bool
+	auto isColumnOpaque = [ & ] ( const int col ) -> bool
 	{
-		auto	data = bmp.data + col * bmp.pixelStride + 3;
+		auto	colData = data + col * pixLen + 3;
 		auto	testY = 0;
-		for ( ; testY < bmp.height && data[ testY * bmp.lineStride ] == 255; ++testY );
-		return testY < bmp.height;
+		for ( ; testY < img.height && colData[ testY * lineLen ] == 255; ++testY );
+		return testY < img.height;
 	};
 
 	// Left
 	auto	x = 0;
-	for ( ; x < bmp.width && ! isColumnOpaque ( x ); ++x );
+	for ( ; x < img.width && ! isColumnOpaque ( x ); ++x );
 
 	// Right
-	auto	w = bmp.width - 1;
+	auto	w = img.width - 1;
 	for ( ; w >= x && ! isColumnOpaque ( w ); --w );
 
 	return { x, y, ( w + 1 ) - x, ( h + 1 ) - y };

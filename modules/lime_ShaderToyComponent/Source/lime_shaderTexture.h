@@ -74,8 +74,21 @@ struct shaderTexture
 		setSource ( img, _yFlipped, _genMip, _isUint, img.pixLen );
 	}
 
+	// Moving in hands the buffer to the texture, so temporaries are fine here
+	void fromImage ( openGL_Image&& img, bool _yFlipped = true, bool _genMip = true, bool _isUint = false )
+	{
+		const auto	pixLength = img.pixLen;
+		setSource ( std::move ( img ), _yFlipped, _genMip, _isUint, pixLength );
+	}
+
 	// Make sure we don't accept temporary openGL_Image objects
 	void fromImage ( const openGL_Image&& img, bool = true, bool = true, bool = false ) = delete;
+
+	void from3DLUT ( openGL_Image&& lut )
+	{
+		const auto	pixLength = lut.pixLen;
+		setSource ( std::move ( lut ), true, false, false, pixLength, true );
+	}
 
 	void fromImage ( const juce::Image& img, bool _yFlipped = true, bool _genMip = true, bool _isUint = false, int _pixLen = 0 )
 	{

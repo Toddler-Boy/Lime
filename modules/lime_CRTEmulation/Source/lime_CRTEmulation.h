@@ -292,8 +292,8 @@ private:
 	//
 	[[ nodiscard ]] bool parseOverlayProfile ( const juce::String& name );
 	[[ nodiscard ]] juce::Rectangle<int> loadPartialTexture ( lime::shaderTexture* dst, const juce::File& root, const int expansion = 0 );
-	[[ nodiscard ]] static juce::Rectangle<int> getCropBounds ( juce::Image& img );
-	[[ nodiscard ]] static juce::Rectangle<int> getHoleBounds ( juce::Image& img );
+	[[ nodiscard ]] static juce::Rectangle<int> getCropBounds ( const openGL_Image& img );
+	[[ nodiscard ]] static juce::Rectangle<int> getHoleBounds ( const openGL_Image& img );
 	[[ nodiscard ]] static juce::Rectangle<float> expandHoleBounds ( const juce::Rectangle<int>& hole, const float targetRatio, const float expansionPixels );
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR ( CRTEmulation )

@@ -130,7 +130,10 @@ void shaderTarget::render ( float viewportWidth, float viewportHeight, float sca
 
 							if constexpr ( std::is_same_v<T, openGL_Image> )
 							{
-								texture->glTexture.loadImage ( arg.getData (), arg.width, arg.height, arg.pixLen, arg.width * arg.pixLen, texture->yFlipped, texture->generateMipmaps, texture->isUint );
+								if ( texture->is3DLUT )
+									texture->glTexture.load3DLUT ( arg.getData (), arg.width, arg.height, arg.pixLen );
+								else
+									texture->glTexture.loadImage ( arg.getData (), arg.width, arg.height, arg.pixLen, arg.width * arg.pixLen, texture->yFlipped, texture->generateMipmaps, texture->isUint );
 							}
 							else if constexpr ( std::is_same_v<T, juce::Image> )
 							{

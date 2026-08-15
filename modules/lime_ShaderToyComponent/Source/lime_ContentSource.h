@@ -24,8 +24,12 @@ namespace lime::content
 
 	[[ nodiscard ]] juce::MemoryBlock loadData ( const juce::File& file );
 	[[ nodiscard ]] juce::String loadText ( const juce::File& file );
-	[[ nodiscard ]] juce::Image loadImage ( const juce::File& file );
 	[[ nodiscard ]] bool exists ( const juce::File& file );
+
+	// PNG/JPEG decoded straight into an upload-ready buffer (BGRA8,
+	// premultiplied); no juce::Image, so nothing lands on the GPU twice
+	[[ nodiscard ]] openGL_Image decodeTexture ( const void* data, const size_t size );
+	[[ nodiscard ]] openGL_Image loadTexture ( const juce::File& file );
 
 	[[ nodiscard ]] juce::Array<juce::File> listFiles ( const juce::File& dir, const bool recursive, const juce::String& wildcard );
 	[[ nodiscard ]] juce::Array<juce::File> listFolders ( const juce::File& dir );
