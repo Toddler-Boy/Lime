@@ -933,7 +933,7 @@ void CRTEmulation::setSettings ( const settings& set )
 
 		// Warm/cold white point: opposing red/blue gains, green compensating so
 		// white keeps its luma and the slider can't act as a brightness control
-		const auto	tint = set.tint * 0.0015f;
+		const auto	tint = set.tint * 0.01f;
 
 		lumaChromaTarget->setUniform_f ( "encTintGains", { 1.0f + tint, 1.0f - tint * ( 0.299f - 0.114f ) / 0.587f, 1.0f - tint } );
 	}
