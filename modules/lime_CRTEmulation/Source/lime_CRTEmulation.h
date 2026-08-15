@@ -42,6 +42,7 @@ public:
 		int8_t			brightness = 50;
 		int8_t			contrast = 80;
 		int8_t			saturation = 50;
+		int8_t			tint = 0;	// -100 cold .. +100 warm, 0 = neutral
 		int8_t			overscan = 0;
 
 		// Emulation itself. With this off, it's just an overlay on top of an unprocessed image
