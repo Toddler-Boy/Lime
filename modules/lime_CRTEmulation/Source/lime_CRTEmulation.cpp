@@ -932,8 +932,11 @@ void CRTEmulation::setSettings ( const settings& set )
 		lumaChromaTarget->setUniform_f ( "encBrightnessContrastSaturation", { brightness * 0.5f, contrast, saturation } );
 
 		// Warm/cold white point: opposing red/blue gains, green compensating so
-		// white keeps its luma and the slider can't act as a brightness control
-		const auto	tint = set.tint * 0.01f;
+		// white keeps its luma and the slider can't act as a brightness control.
+		// Sign-aware pow 2.5: the gains shift too much per step around neutral,
+		// this makes the slider feel linear
+		const auto	tintLinear = set.tint * 0.01f;
+		const auto	tint = std::copysign ( std::pow ( std::abs ( tintLinear ), 2.5f ), tintLinear );
 
 		lumaChromaTarget->setUniform_f ( "encTintGains", { 1.0f + tint, 1.0f - tint * ( 0.299f - 0.114f ) / 0.587f, 1.0f - tint } );
 	}
