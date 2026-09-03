@@ -31,6 +31,10 @@ public:
 	// this
 	[[ nodiscard ]] bool isReady () const { return openGLContext.isAttached (); }
 
+	// Renders one frame on the GL thread and reads it back at physical pixels;
+	// blocks the caller, invalid image without an attached context
+	[[ nodiscard ]] juce::Image grabFrame ();
+
 	void setRoot ( const juce::File& _root, const juce::File& _local, const juce::String& shaderFolderName = "!Shaders", const juce::String& textureFolderName = "!Textures" );
 
 	void setPipeline ( const juce::File& _file );
@@ -90,6 +94,9 @@ private:
 	void*				captureAddress = nullptr;
 	std::atomic<int>	lastFrameRequested = -1;
 	std::atomic<int>	lastFrameRendered = -1;
+
+	// GL thread only, reads the back buffer at physical pixels
+	[[ nodiscard ]] juce::Image readBackBuffer ( const int width, const int height ) const;
 
 	// Roots
 	juce::File			root;

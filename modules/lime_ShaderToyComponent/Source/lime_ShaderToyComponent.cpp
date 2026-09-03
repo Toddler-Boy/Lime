@@ -747,6 +747,64 @@ void ShaderToyComponent::setCaptureAddress ( void* addr )
 }
 //-----------------------------------------------------------------------------
 
+juce::Image ShaderToyComponent::grabFrame ()
+{
+	if ( ! openGLContext.isAttached () )
+		return {};
+
+	juce::Image	frame;
+
+	// The render thread runs blocking jobs while it waits for the message thread
+	// (us), so the render into the back buffer and the readback stay on the GL thread
+	openGLContext.executeOnGLThread ( [ this, &frame ] ( juce::OpenGLContext& ctx )
+	{
+		const auto	scale = float ( ctx.getRenderingScale () );
+
+		renderOpenGL ();
+		frame = readBackBuffer ( int ( getWidth () * scale ), int ( getHeight () * scale ) );
+	}, true );
+
+	return frame;
+}
+//-----------------------------------------------------------------------------
+
+juce::Image ShaderToyComponent::readBackBuffer ( const int width, const int height ) const
+{
+	juce::Image	frame ( juce::Image::ARGB, width, height, false );
+
+	juce::Image::BitmapData	bmp ( frame, juce::Image::BitmapData::writeOnly );
+
+	juce::gl::glBindFramebuffer ( juce::gl::GL_FRAMEBUFFER, 0 );
+	juce::gl::glPixelStorei ( juce::gl::GL_PACK_ALIGNMENT, 4 );
+	juce::gl::glPixelStorei ( juce::gl::GL_PACK_ROW_LENGTH, bmp.lineStride / bmp.pixelStride );
+	juce::gl::glReadPixels ( 0, 0, width, height, juce::gl::GL_BGRA, juce::gl::GL_UNSIGNED_BYTE, bmp.data );
+	juce::gl::glPixelStorei ( juce::gl::GL_PACK_ROW_LENGTH, 0 );
+
+	// GL rows come bottom-up; the framebuffer alpha is meaningless, force opaque
+	std::vector<juce::uint8>	row ( size_t ( bmp.lineStride ) );
+
+	for ( auto y = 0; y < height / 2; ++y )
+	{
+		auto*	top = bmp.getLinePointer ( y );
+		auto*	bottom = bmp.getLinePointer ( height - 1 - y );
+
+		std::memcpy ( row.data (), top, row.size () );
+		std::memcpy ( top, bottom, row.size () );
+		std::memcpy ( bottom, row.data (), row.size () );
+	}
+
+	for ( auto y = 0; y < height; ++y )
+	{
+		auto*	line = bmp.getLinePointer ( y );
+
+		for ( auto x = 0; x < width; ++x )
+			line[ x * bmp.pixelStride + 3 ] = 0xff;
+	}
+
+	return frame;
+}
+//-----------------------------------------------------------------------------
+
 void ShaderToyComponent::enableRenderTimeMeasurement ( const bool enable )
 {
 	measureRenderTime = enable;
