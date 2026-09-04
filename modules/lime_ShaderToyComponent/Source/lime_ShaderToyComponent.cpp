@@ -12,46 +12,62 @@ uniform float iDelta;
 uniform float iGPUTime;
 uniform float iPercent;
 
-float digitBin ( const int x )
-{
-    const int digits[10] = int[](
-        480599,
-        139810,
-        476951,
-        476999,
-        350020,
-        464711,
-        464727,
-        476228,
-        481111,
-        481095
-    );
+// 5x6 dot glyphs, bit = column + row * 5 with row 0 at the bottom, in a
+// 6x7 cell (one dot of spacing right and above)
+const uint digits[10] = uint[](
+	488162862u,
+	140644494u,
+	487854175u,
+	520569359u,
+	281378056u,
+	1041744399u,
+	471320110u,
+	1057230914u,
+	488064558u,
+	488587790u
+);
+const uint glyphMinus = 1015808u;
+const uint glyphPoint = 198u;
+const vec2 cell = vec2 ( 6.0, 7.0 );
 
-    return float ( digits[ x ] );
+// The glyph dot under a position measured in cells
+float glyphDot ( uint glyph, vec2 vStringCoords )
+{
+	int	col = int ( floor ( fract ( vStringCoords.x ) * cell.x ) );
+	int	row = int ( floor ( fract ( vStringCoords.y ) * cell.y ) );
+
+	if ( col > 4 || row > 5 )
+		return 0.0;
+
+	return float ( ( glyph >> uint ( col + row * 5 ) ) & 1u );
 }
 
 float printValue ( vec2 vStringCoords, float fValue, float fMaxDigits, float fDecimalPlaces )
 {
-    bool	bNeg = ( fValue < 0.0 );
+	// Off this line of text
+	if ( vStringCoords.y < 0.0 || vStringCoords.y >= 1.0 )
+		return 0.0;
+
+	bool	bNeg = ( fValue < 0.0 );
 	fValue = abs ( fValue );
 
 	float	fLog10Value = log2 ( abs ( fValue ) ) / log2 ( 10.0 );
 	float	fBiggestIndex = max ( floor ( fLog10Value ), 0.0 );
 	float	fDigitIndex = fMaxDigits - floor ( vStringCoords.x );
-	float	fCharBin = 0.0;
+	uint	glyph = 0u;
 	if ( fDigitIndex > ( -fDecimalPlaces - 1.01 ) )
 	{
 		if ( fDigitIndex > fBiggestIndex )
 		{
 			if ( ( bNeg ) && ( fDigitIndex < ( fBiggestIndex + 1.5 ) ) )
-				fCharBin = 1792.0;
+				glyph = glyphMinus;
 		}
 		else
 		{
 			if ( fDigitIndex == -1.0 )
 			{
 				if ( fDecimalPlaces > 0.0 )
-					fCharBin = 2.0;
+					glyph = glyphPoint;
 			}
 			else
 			{
@@ -62,16 +78,18 @@ float printValue ( vec2 vStringCoords, float fValue, float fMaxDigits, float fDe
 					fDigitIndex += 1.0;
 				}
 				float	fDigitValue = ( abs ( fReducedRangeValue / ( pow ( 10.0, fDigitIndex ) ) ) );
-				fCharBin = digitBin ( int ( floor ( mod ( fDigitValue, 10.0 ) ) ) );
+				glyph = digits[ int ( floor ( mod ( fDigitValue, 10.0 ) ) ) ];
 			}
         }
 	}
-	return floor ( mod ( ( fCharBin / pow ( 2.0, floor ( fract ( vStringCoords.x ) * 4.0 ) + ( floor ( vStringCoords.y * 5.0 ) * 4.0 ) ) ), 2.0 ) );
+	return glyphDot ( glyph, vStringCoords );
 }
 
 void main ()
 {
-	vec2	uv = fragCoord * 10.0;
+	// 7 cells wide (sign, two digits, point, two decimals, margin) by 6
+	// lines; the target is sized to whole dots where it renders
+	vec2	uv = fragCoord * vec2 ( 7.0, 6.0 );
 	float	text = 0.0;
 
 	text += printValue ( uv - vec2 ( 0.5, 4.5 ), iDelta, 2.0, 2.0 );
@@ -271,7 +289,8 @@ void ShaderToyComponent::renderOpenGL ()
 			frameTimeTarget.setUniform_f ( "iGPUTime", float ( lastGpuTimeMS_cur ) );
 			frameTimeTarget.setUniform_f ( "iPercent", float ( loadPercentage ) );
 
-			frameTimeTarget.setSize ( 100, 100 );
+			// 7 x 6 cells of 6 x 7 dots (the shader's layout) at 2 px per dot
+			frameTimeTarget.setSize ( 7 * 6 * 2, 6 * 7 * 2 );
 			frameTimeTarget.render ( viewportWidth, viewportHeight, renderingScale );
 		}
 	}
