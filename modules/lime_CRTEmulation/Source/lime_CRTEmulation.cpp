@@ -1334,14 +1334,19 @@ void CRTEmulation::run ()
 			removeWebcamListener ();
 			camera.reset ();
 			webcamOpenFailed = false;
+			webcamWarned = false;
 		}
 
-		// A device that failed to open is not retried until the pick changes
-		// or the webcam is toggled off and on
-		if ( isShowing () && isWebcamNeeded () && ! webcamOpenFailed )
+		// A device that failed to open is retried every few seconds (a camera
+		// may get plugged in later), silently after the first warning
+		if ( isShowing () && isWebcamNeeded () )
 		{
-			addWebcamListener ( wanted );
-			webcamOpenFailed = camera == nullptr;
+			if ( ! webcamOpenFailed || --webcamRetryTicks <= 0 )
+			{
+				addWebcamListener ( wanted );
+				webcamOpenFailed = camera == nullptr;
+				webcamRetryTicks = 30;	// 3 s at the 100 ms loop
+			}
 		}
 		else
 		{
@@ -1383,10 +1388,15 @@ void CRTEmulation::addWebcamListener ( const juce::String& deviceName )
 		camera = std::make_unique<Webcam> ( 1920, 1080, 60, resolveIndex ( deviceName ) );
 		if ( ! camera->getError ().empty () )
 		{
-			Z_WARN ( "Webcam error: " << camera->getError () );
+			if ( ! webcamWarned )
+				Z_WARN ( "Webcam error: " << camera->getError () );
+
+			webcamWarned = true;
 			camera.reset ();
 			return;
 		}
+
+		webcamWarned = false;
 
 		camera->onDataReceived = [ this ] ( uint8_t* dataY, uint8_t* dataUV, int width, int height, int strideY, int strideUV, pixFmt format )
 		{

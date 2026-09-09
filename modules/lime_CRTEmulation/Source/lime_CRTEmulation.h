@@ -255,7 +255,9 @@ private:
 	void run () override;
 
 	bool	isCamInUse = false;
-	bool	webcamOpenFailed = false;	// Camera-thread only
+	bool	webcamOpenFailed = false;	// Camera-thread only, as are the two below
+	bool	webcamWarned = false;		// One warning per device pick
+	int		webcamRetryTicks = 0;
 	std::unique_ptr<Webcam>		camera;
 	std::atomic<pixFmt>			camPixFmt = pixFmt ( NV12 | matrixBT601 | rangeLimited );
 	std::atomic<bool>			camChanged = false;	// Camera thread -> render thread
