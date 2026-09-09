@@ -30,7 +30,6 @@ typedef struct {
 	int strideY;		// driver row stride in bytes (>= width for padded rows)
 	int id;
 	int framerate;
-	__u32 pixelformat;
 	pixFmt colorTags;	// negotiated matrix/range bits, OR'd into each frame
 	_sr_webcam_buffer* buffers;
 	int buffersCount;
@@ -61,7 +60,7 @@ static pixFmt _sr_webcam_color_tags ( __u32 colorspace, __u32 ycbcr_enc, __u32 q
 	// else SMPTE240M / BT2020 / SYCC / unresolved DEFAULT -> matrix unknown.
 
 	// Range: from quantization. A DEFAULT value's meaning depends on colorspace
-	// and format; our format is always YCbCr (NV12/YUYV) so is_rgb_or_hsv=false,
+	// and format; our format is always YCbCr (YUYV) so is_rgb_or_hsv=false,
 	// and the kernel rule reduces to "JPEG colorspace -> full, else limited".
 	// We only resolve DEFAULT when colorspace is a real value; if colorspace is
 	// itself DEFAULT/RAW the range is genuinely unresolvable -> leave unset.
@@ -118,14 +117,30 @@ void* _sr_webcam_callback_loop ( void* arg )
 			if ( errno != EIO )
 				return NULL;
 
-		// The NV12 UV plane starts at strideY * height (rows may be padded)
 		auto*	bufStart = (unsigned char*)stream->buffers[ buf.index ].start;
-		auto*	uvStart = stream->pixelformat == V4L2_PIX_FMT_NV12 ? bufStart + stream->strideY * stream->height : nullptr;
-		stream->parent->callback ( stream->parent, bufStart, uvStart, stream->width, stream->height, stream->strideY, stream->strideY, pixFmt ( ( stream->pixelformat == V4L2_PIX_FMT_NV12 ? NV12 : YUY2 ) | stream->colorTags ) );
+		stream->parent->callback ( stream->parent, bufStart, nullptr, stream->width, stream->height, stream->strideY, stream->strideY, pixFmt ( YUY2 | stream->colorTags ) );
 
 		_sr_webcam_wait_ioctl ( stream->fid, VIDIOC_QBUF, &buf );
 	}
 	return NULL;
+}
+
+// A node counts only when sr_webcam_open could use it: YUYV capture, judged
+// by the node's own device_caps (`capabilities` is the union over the device)
+static bool _sr_webcam_is_usable_node(int fid, struct v4l2_capability* cap)
+{
+	if(_sr_webcam_wait_ioctl(fid, VIDIOC_QUERYCAP, cap) != 0)
+		return false;
+	const uint32_t caps = (cap->capabilities & V4L2_CAP_DEVICE_CAPS) ? cap->device_caps : cap->capabilities;
+	if(!(caps & V4L2_CAP_VIDEO_CAPTURE) || !(caps & V4L2_CAP_STREAMING))
+		return false;
+	struct v4l2_fmtdesc desc;
+	memset(&desc, 0, sizeof(desc));
+	desc.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	for(; _sr_webcam_wait_ioctl(fid, VIDIOC_ENUM_FMT, &desc) == 0; desc.index++)
+		if(desc.pixelformat == V4L2_PIX_FMT_YUYV)
+			return true;
+	return false;
 }
 
 std::vector<std::string> sr_webcam_list_devices()
@@ -140,9 +155,7 @@ std::vector<std::string> sr_webcam_list_devices()
 		if(fid < 0)
 			continue;
 		struct v4l2_capability probeCap;
-		if(_sr_webcam_wait_ioctl(fid, VIDIOC_QUERYCAP, &probeCap) == 0
-			&& (probeCap.capabilities & V4L2_CAP_VIDEO_CAPTURE)
-			&& (probeCap.capabilities & V4L2_CAP_STREAMING)) {
+		if(_sr_webcam_is_usable_node(fid, &probeCap)) {
 			const char* card = (const char*)probeCap.card;
 			names.push_back(card[0] ? card : file);
 		}
@@ -175,11 +188,8 @@ bool sr_webcam_open(sr_webcam_device* device)
 			int fid = open(file, O_RDWR | O_NONBLOCK, 0);
 			if(fid < 0)
 				continue;
-			// Check if this device supports video capture.
 			struct v4l2_capability probeCap;
-			if(_sr_webcam_wait_ioctl(fid, VIDIOC_QUERYCAP, &probeCap) == 0
-				&& (probeCap.capabilities & V4L2_CAP_VIDEO_CAPTURE)
-				&& (probeCap.capabilities & V4L2_CAP_STREAMING)) {
+			if(_sr_webcam_is_usable_node(fid, &probeCap)) {
 				if(seen == device->deviceId) {
 					stream->id  = i;
 					stream->fid = fid;
@@ -218,82 +228,70 @@ bool sr_webcam_open(sr_webcam_device* device)
 	crop.c	  = cropCap.defrect; // Default rectangle.
 	_sr_webcam_wait_ioctl(fid, VIDIOC_S_CROP, &crop);
 
-	// Find the highest resolution that supports >= 30fps.
-	// Prefer NV12 (zero-copy), fall back to YUYV (cheap conversion).
-	__u32 preferredFormats[] = { V4L2_PIX_FMT_NV12, V4L2_PIX_FMT_YUYV };
-	__u32 bestPixFmt = 0;
+	// Highest YUYV resolution that supports >= 30fps (YUYV is the sensor-native
+	// format, anything else costs a driver conversion)
+	const __u32 pixFmt = V4L2_PIX_FMT_YUYV;
 	int bestWidth = 0, bestHeight = 0;
 
-	for(int fi = 0; fi < 2; ++fi) {
-		__u32 pixFmt = preferredFormats[fi];
-		struct v4l2_frmsizeenum frmsize;
-		memset(&frmsize, 0, sizeof(frmsize));
-		frmsize.pixel_format = pixFmt;
-		frmsize.index = 0;
+	struct v4l2_frmsizeenum frmsize;
+	memset(&frmsize, 0, sizeof(frmsize));
+	frmsize.pixel_format = pixFmt;
+	frmsize.index = 0;
 
-		while(_sr_webcam_wait_ioctl(fid, VIDIOC_ENUM_FRAMESIZES, &frmsize) == 0) {
-			if(frmsize.type == V4L2_FRMSIZE_TYPE_DISCRETE) {
-				int w = (int)frmsize.discrete.width;
-				int h = (int)frmsize.discrete.height;
+	while(_sr_webcam_wait_ioctl(fid, VIDIOC_ENUM_FRAMESIZES, &frmsize) == 0) {
+		if(frmsize.type == V4L2_FRMSIZE_TYPE_DISCRETE) {
+			int w = (int)frmsize.discrete.width;
+			int h = (int)frmsize.discrete.height;
 
-				// Check if this size supports >= 30fps.
-				struct v4l2_frmivalenum frmival;
-				memset(&frmival, 0, sizeof(frmival));
-				frmival.pixel_format = pixFmt;
-				frmival.width  = frmsize.discrete.width;
-				frmival.height = frmsize.discrete.height;
-				frmival.index  = 0;
+			// Check if this size supports >= 30fps.
+			struct v4l2_frmivalenum frmival;
+			memset(&frmival, 0, sizeof(frmival));
+			frmival.pixel_format = pixFmt;
+			frmival.width  = frmsize.discrete.width;
+			frmival.height = frmsize.discrete.height;
+			frmival.index  = 0;
 
-				while(_sr_webcam_wait_ioctl(fid, VIDIOC_ENUM_FRAMEINTERVALS, &frmival) == 0) {
-					int fps = 0;
-					if(frmival.type == V4L2_FRMIVAL_TYPE_DISCRETE && frmival.discrete.numerator > 0)
-						fps = (int)(frmival.discrete.denominator / frmival.discrete.numerator);
+			while(_sr_webcam_wait_ioctl(fid, VIDIOC_ENUM_FRAMEINTERVALS, &frmival) == 0) {
+				int fps = 0;
+				if(frmival.type == V4L2_FRMIVAL_TYPE_DISCRETE && frmival.discrete.numerator > 0)
+					fps = (int)(frmival.discrete.denominator / frmival.discrete.numerator);
 
-					if(fps >= 30 && w * h > bestWidth * bestHeight) {
-						bestWidth  = w;
-						bestHeight = h;
-						bestPixFmt = pixFmt;
-					}
-					frmival.index++;
+				if(fps >= 30 && w * h > bestWidth * bestHeight) {
+					bestWidth  = w;
+					bestHeight = h;
 				}
+				frmival.index++;
 			}
-			frmsize.index++;
 		}
-		// If we found a good mode in the preferred format, stop looking.
-		if(bestPixFmt == pixFmt)
-			break;
+		frmsize.index++;
 	}
 
 	struct v4l2_format fmt;
 	memset(&fmt, 0, sizeof(fmt));
 	fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	fmt.fmt.pix.pixelformat = pixFmt;
 
-	if(bestPixFmt != 0) {
+	if(bestWidth > 0) {
 		fmt.fmt.pix.width  = bestWidth;
 		fmt.fmt.pix.height = bestHeight;
-		fmt.fmt.pix.pixelformat = bestPixFmt;
 	} else {
 		// Enumeration found nothing; try requesting what the caller asked for.
 		fmt.fmt.pix.width  = device->width;
 		fmt.fmt.pix.height = device->height;
-		fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_NV12;
 	}
 
-	if(_sr_webcam_wait_ioctl(fid, VIDIOC_S_FMT, &fmt) == -1 || (fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_NV12 && fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_YUYV)) {
+	if(_sr_webcam_wait_ioctl(fid, VIDIOC_S_FMT, &fmt) == -1 || fmt.fmt.pix.pixelformat != pixFmt) {
 		close(fid);
 		free(stream);
 		return false;
 	}
-	stream->pixelformat = fmt.fmt.pix.pixelformat;
 	// Capture the colour-space tags the driver negotiated (matrix + range). These
 	// are fixed for the session, so read them once and OR them into every frame.
 	stream->colorTags = _sr_webcam_color_tags(fmt.fmt.pix.colorspace, fmt.fmt.pix.ycbcr_enc, fmt.fmt.pix.quantization);
 	// Update the size based on the format constraints
 	stream->width  = fmt.fmt.pix.width;
 	stream->height = fmt.fmt.pix.height;
-	stream->strideY = (stream->pixelformat == V4L2_PIX_FMT_NV12 && fmt.fmt.pix.bytesperline > 0)
-						? (int)fmt.fmt.pix.bytesperline
-						: (int)fmt.fmt.pix.width;
+	stream->strideY = (int)fmt.fmt.pix.width;
 
 	// Allocate buffers for video frames.
 	struct v4l2_requestbuffers req;
