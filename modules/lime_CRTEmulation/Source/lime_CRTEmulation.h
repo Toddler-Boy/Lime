@@ -166,9 +166,10 @@ private:
 	std::atomic<bool>	signalLost = false;
 	float				currentNoise = -1.0f;	// Negative until the first frame snaps it
 
-	// Webcam raw-data NV12 (Windows & macOS)
-	openGL_Image	camImageNV12_Y { 1, 1920, 1080 };
-	openGL_Image	camImageNV12_UV { 2, 1920 / 2, 1080 / 2 };
+	// Webcam planes: NV12 Y + UV (Windows, macOS) or the YUY2 packed rows as
+	// 2-channel + 4-channel views (Linux)
+	openGL_Image	camImage_Y { 1, 1920, 1080 };
+	openGL_Image	camImage_UV { 2, 1920 / 2, 1080 / 2 };
 
 	// Palette object
 	shaderFloatTexture	lumaChromaPaletteSrc;
@@ -201,8 +202,8 @@ private:
 	shaderTexture*	halationTexture;
 
 	shaderTexture*	glassTexture;
-	shaderTexture*	webcamTextureNV12_Y = nullptr;
-	shaderTexture*	webcamTextureNV12_UV = nullptr;
+	shaderTexture*	webcamTexture_Y = nullptr;
+	shaderTexture*	webcamTexture_UV = nullptr;
 
 	shaderTarget*	crtTargetCurved;
 
@@ -232,6 +233,7 @@ private:
 	[[ nodiscard ]] bool isWebcamNeeded () const;
 	void addWebcamListener ( const juce::String& deviceName );
 	void removeWebcamListener ();
+	void applyWebcamUniforms ();
 
 	// Wanted device travels message thread -> camera thread under the lock;
 	// openedWebcamDevice is camera-thread only
@@ -256,6 +258,7 @@ private:
 	bool	webcamOpenFailed = false;	// Camera-thread only
 	std::unique_ptr<Webcam>		camera;
 	std::atomic<pixFmt>			camPixFmt = pixFmt ( NV12 | matrixBT601 | rangeLimited );
+	std::atomic<bool>			camChanged = false;	// Camera thread -> render thread
 
 	//
 	// Root directory for CRT emulation resources (overlays, CRT masks, etc.)

@@ -291,7 +291,7 @@ bool sr_webcam_open(sr_webcam_device* device)
 	// Update the size based on the format constraints
 	stream->width  = fmt.fmt.pix.width;
 	stream->height = fmt.fmt.pix.height;
-	stream->strideY = (int)fmt.fmt.pix.width;
+	stream->strideY = fmt.fmt.pix.bytesperline > 0 ? (int)fmt.fmt.pix.bytesperline : (int)fmt.fmt.pix.width * 2;
 
 	// Allocate buffers for video frames.
 	struct v4l2_requestbuffers req;
