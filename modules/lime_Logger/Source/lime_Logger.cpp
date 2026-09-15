@@ -138,29 +138,107 @@ bool Logger::isLoggingWindowVisible ()
 }
 //-------------------------------------------------------------------------------------------------
 
-void Logger::setLogFolder ( const juce::File& f )
+constexpr auto	runHeader = "===== ";
+constexpr auto	keepDays = 10;
+constexpr auto	keepMinLines = 300;
+constexpr auto	keepMaxLines = 2000;
+
+// The date a run header carries, or an invalid Time for anything else
+static juce::Time runDate ( const juce::String& line )
+{
+	const auto	date = line.startsWith ( runHeader ) ? line.substring ( 6, 16 ) : juce::String ();
+
+	if ( date.length () != 10 || date[ 4 ] != '-' || date[ 7 ] != '-' || ! date.removeCharacters ( "-" ).containsOnly ( "0123456789" ) )
+		return {};
+
+	return juce::Time::fromISO8601 ( date );
+}
+//-------------------------------------------------------------------------------------------------
+
+// Keeps the newest whole runs: every run from the last keepDays, more until
+// keepMinLines are kept, none once keepMaxLines would be passed
+static juce::StringArray trimmedRuns ( const juce::StringArray& lines )
+{
+	// Lines before the first header count as one run of unknown age
+	juce::Array<int>	starts;
+
+	for ( auto i = 0; i < lines.size (); ++i )
+		if ( lines[ i ].startsWith ( runHeader ) || i == 0 )
+			starts.add ( i );
+
+	const auto	oldest = juce::Time::getCurrentTime () - juce::RelativeTime::days ( keepDays );
+
+	auto	keepFrom = lines.size ();
+	auto	kept = 0;
+
+	for ( auto r = starts.size () - 1; r >= 0; --r )
+	{
+		const auto	start = starts[ r ];
+		const auto	size = keepFrom - start;
+		const auto	recent = runDate ( lines[ start ] ) >= oldest;
+
+		if ( ! recent && kept >= keepMinLines )
+			break;
+
+		if ( kept + size > keepMaxLines )
+			break;
+
+		keepFrom = start;
+		kept += size;
+	}
+
+	juce::StringArray	result;
+
+	// A single run past the cap keeps its tail
+	for ( auto i = std::max ( keepFrom, lines.size () - keepMaxLines ); i < lines.size (); ++i )
+		result.add ( lines[ i ] );
+
+	return result;
+}
+//-------------------------------------------------------------------------------------------------
+
+void Logger::setLogFile ( const juce::File& file, const juce::String& sessionInfo )
 {
 	juce::ScopedLock	sl ( lock );
 
-	if ( f != juce::File () )
+	logStream = nullptr;
+	logHistory.clear ();
+
+	if ( file == juce::File () )
+		return;
+
+	auto	lines = juce::StringArray::fromLines ( file.loadFileAsString () );
+	lines.removeEmptyStrings ();
+
+	const auto	kept = trimmedRuns ( lines );
+
+	if ( kept.size () > 0 )
+		logHistory = kept.joinIntoString ( "\r\n" ) + "\r\n";
+
+	file.getParentDirectory ().createDirectory ();
+
+	// A trimmed file is rewritten before it reopens for append
+	if ( kept.size () < lines.size () && ! file.replaceWithText ( logHistory ) )
 	{
-		f.createDirectory ();
-
-		auto	files = f.findChildFiles ( juce::File::findFiles, true, "*", juce::File::FollowSymlinks::noCycles );
-		std::sort ( files.begin (), files.end (), [] ( const auto& lhs, const auto& rhs ) { return lhs.getCreationTime () < rhs.getCreationTime (); } );
-
-		while ( files.size () > 3 )
-			files.removeAndReturn ( 0 ).deleteFile ();
-
-		auto	logFile = f.getChildFile ( juce::Time::getCurrentTime ().toISO8601 ( false ) + ".txt" );
-		logStream = std::make_unique<juce::FileOutputStream> ( logFile );
+		Z_WARN ( "Couldn't rewrite the log file: " << file.getFullPathName () );
+		return;
 	}
-	else
+
+	auto	stream = std::make_unique<juce::FileOutputStream> ( file );
+
+	if ( stream->failedToOpen () )
 	{
-		logStream = nullptr;
+		Z_WARN ( "Couldn't open the log file: " << file.getFullPathName () );
+		return;
 	}
 
-	logFolder = f;
+	const auto	header = runHeader + juce::Time::getCurrentTime ().formatted ( "%Y-%m-%d %H:%M:%S" ) + " " + sessionInfo + " =====\r\n";
+
+	stream->writeText ( header, false, false, nullptr );
+	stream->flush ();
+
+	logHistory += header;
+	logStream = std::move ( stream );
 }
 //-------------------------------------------------------------------------------------------------
 
@@ -260,31 +338,10 @@ juce::String Logger::getAsString ()
 
 	juce::ScopedLock	sl ( lock );
 
-	if ( logStream != nullptr )
-		text += mergeLogFiles ();
+	text += logHistory;
 
 	for ( auto& msg : messages )
 		text += msg.toString () + "\r\n";
-
-	return text;
-}
-//-------------------------------------------------------------------------------------------------
-
-juce::String Logger::mergeLogFiles ()
-{
-	juce::String text;
-
-	auto	files = logFolder.findChildFiles ( juce::File::findFiles, false );
-	std::sort ( files.begin (), files.end (), [] ( const auto& lhs, const auto& rhs ) { return lhs.getCreationTime () < rhs.getCreationTime (); } );
-
-	// Get all the files except the last (current) one
-	for ( auto i = 0; i < files.size () - 1; i++ )
-	{
-		auto	f = files[ i ];
-
-		text += f.loadFileAsString ();
-		text += "------------------------------------------------------------------------------\r\n\r\n";
-	}
 
 	return text;
 }

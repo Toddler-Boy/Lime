@@ -71,7 +71,10 @@ public:
 	juce::String					creatorString;
 	std::function<juce::String ()>	additionalSystemStats;
 
-	void setLogFolder ( const juce::File& );
+	// One persistent file, appended per run. Opening it trims the previous
+	// runs: whole runs from the last 10 days, at least the last 300 lines,
+	// never more than 2000. sessionInfo (app, version, OS) heads each run
+	void setLogFile ( const juce::File&, const juce::String& sessionInfo );
 
 	LogLevel getLogLevel ()				{ return level; }
 	void setLogLevel ( LogLevel l )		{ level = l;	}
@@ -108,13 +111,13 @@ private:
 	void handleAsyncUpdate () override;
 
 	juce::String getSystemStats ();
-	juce::String mergeLogFiles ();
 
 	juce::CriticalSection 	lock;
 	juce::Array<LogMessage>	messages;
 	LogLevel				level = LogLevel::debuglog;
 
-	juce::File								logFolder;
+	// The previous runs the file kept, so a support dump needs no file read
+	juce::String							logHistory;
 	std::unique_ptr<juce::FileOutputStream>	logStream;
 	std::unique_ptr<LoggerWindow> 			loggerWindow;
 
