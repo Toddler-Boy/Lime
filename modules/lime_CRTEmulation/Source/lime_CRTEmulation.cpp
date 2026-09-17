@@ -348,6 +348,7 @@ CRTEmulation::CRTEmulation ( const bool canHaveChildren, const int idleTimeout, 
 CRTEmulation::~CRTEmulation ()
 {
 	stopThread ( -1 );
+	shutdownGL ();
 }
 //-----------------------------------------------------------------------------
 

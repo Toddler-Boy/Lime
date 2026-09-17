@@ -108,6 +108,10 @@ private:
 	juce::File findFile ( const juce::String& name );
 
 protected:
+	// Derived destructors call this: the render thread runs until the detach,
+	// which must find the derived parts (and openGLContextClosing) still alive
+	void shutdownGL ();
+
 	juce::OpenGLContext		openGLContext;
 
 	shaderTarget			frameTimeTarget { openGLContext, "/frameTime" };

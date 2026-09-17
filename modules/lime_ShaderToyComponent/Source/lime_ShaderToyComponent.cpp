@@ -154,6 +154,12 @@ ShaderToyComponent::~ShaderToyComponent ()
 	if ( idleTimeout > 0 )
 		juce::Desktop::getInstance ().removeGlobalMouseListener ( &globalListener );
 
+	shutdownGL ();
+}
+//-----------------------------------------------------------------------------
+
+void ShaderToyComponent::shutdownGL ()
+{
 	openGLContext.detach ();
 }
 //-----------------------------------------------------------------------------
