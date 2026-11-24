@@ -867,6 +867,8 @@ void shaderTarget::resetUniforms ()
 	{
 		uni.uniformPtr[ 0 ].reset ();
 		uni.uniformPtr[ 1 ].reset ();
+		uni.isMissing[ 0 ] = false;
+		uni.isMissing[ 1 ] = false;
 	}
 }
 //-----------------------------------------------------------------------------
@@ -877,8 +879,20 @@ void shaderTarget::updateUniforms ( juce::OpenGLShaderProgram* prg, const int in
 
 	for ( auto& [ uniName, uni ] : uniforms )
 	{
+		if ( uni.isMissing[ index ] )
+			continue;
+
 		if ( ! uni.uniformPtr[ index ] )
+		{
+			// A uniform the program does not use has no location: the compiler dropped it
+			if ( prg->getUniformIDFromName ( uniName.c_str () ) < 0 )
+			{
+				uni.isMissing[ index ] = true;
+				continue;
+			}
+
 			uni.uniformPtr[ index ] = std::make_unique<juce::OpenGLShaderProgram::Uniform> ( *prg, uniName.c_str () );
+		}
 
 		uni.update ( index );
 	}

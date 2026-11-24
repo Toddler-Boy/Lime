@@ -160,6 +160,7 @@ private:
 	struct uniform
 	{
 		std::unique_ptr<juce::OpenGLShaderProgram::Uniform>	uniformPtr[ 2 ];
+		bool												isMissing[ 2 ] = {};	// the program has no such uniform
 
 		union
 		{
